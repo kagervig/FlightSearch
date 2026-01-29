@@ -13,17 +13,6 @@ The airport class holds the airport details:
 - double lon (longitude)
 - String time zone
 
-### FileReader
-Takes a String containing file path.
-Reads a .txt file with comma separated values in the order:
-- airport code (E.G. JFK)
-- airport name (E.G. John F. Kennedy International Airport)
-- airport latitude (E.G. 40.6398)
-- airport longitude (E.G. -73.7789)
-- Time Zone (E.G. EST)
-
-getAirports() method will populate an array of type Airport.
-
 ### Flight
 The flight class holds:
 - Airport airportOrigin
@@ -51,6 +40,10 @@ requires:
 generateFlightNum() will create a random flight number
 
 # Flight Generation
+
+### getAirports() 
+method will populate an array of type Airport.
+
 ### FlightDurationCalculator
 estimates flight duration based on distance.
 
@@ -78,4 +71,13 @@ takes in a Flight object and prints the following:
 - Departure time
 - Arrival time
 - Duration
+
+### FileReader
+Takes a String containing file path.
+Reads a .txt file with comma separated values in the order:
+- airport code (E.G. JFK)
+- airport name (E.G. John F. Kennedy International Airport)
+- airport latitude (E.G. 40.6398)
+- airport longitude (E.G. -73.7789)
+- Time Zone (E.G. EST)
 
