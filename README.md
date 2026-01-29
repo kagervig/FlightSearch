@@ -1,9 +1,11 @@
 # Flight Search App
 This app will be a tool to search for the best route between multiple cities. The goal is to help travelers find an ideal route for a trip that will visit multiple cities, rather than searching for each leg independently. The tool will optimise for either lowest overall cost, shortest overall flight duration, or fewest layovers/stops.
 
+Written with Java & NextJS
+
 # Models
 
-## Airport
+### Airport
 The airport class holds the airport details:
 - String code
 - String name
@@ -22,7 +24,7 @@ Reads a .txt file with comma separated values in the order:
 
 getAirports() method will populate an array of type Airport.
 
-## Flight
+### Flight
 The flight class holds:
 - Airport airportOrigin
 - Airport airportDestination
