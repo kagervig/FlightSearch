@@ -1,0 +1,10 @@
+ATL,Hartsfield-Jackson Atlanta International Airport,33.6404,-84.4199,EST
+LAX,Los Angeles International Airport,33.9428,-118.4100,PST
+DFW,Dallas/Fort Worth International Airport,32.8968,-97.0380,CST
+DEN,Denver International Airport,39.8617,-104.6732,MST
+ORD,Chicago O'Hare International Airport,41.9786,-87.9048,CST
+JFK,John F. Kennedy International Airport,40.6398,-73.7789,EST
+LAS,Harry Reid International Airport,36.0801,-115.1540,PST
+MCO,Orlando International Airport,28.4294,-81.3090,EST
+CLT,Charlotte Douglas International Airport,35.2139,-80.9431,EST
+SEA,Seattle-Tacoma International Airport,47.4502,-122.3088,PST
