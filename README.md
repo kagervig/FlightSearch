@@ -40,17 +40,7 @@ requires:
 generateFlightNum() will create a random flight number
 
 # Flight Generation
-
-### getAirports() 
-method will populate an array of type Airport.
-
-### FlightDurationCalculator
-estimates flight duration based on distance.
-
-### FlightDistanceCalculator
-Uses the haversine formula to calculate distnace in nautical miles between two geo-coordinates.
-
-Takes as input two Airport objects, returns double distance.
+This class generates dummy data for the purposes of building and testing the tool.
 
 ### FlightGenerator
 generateFlights() takes as input an int (number of flights to generate) and an array of type Airport. Will randomly generate n number of flights.
@@ -63,21 +53,4 @@ getAirports() will call FileReader to read a file of airport data.
 
 printFlightList() takes in a HashMap of flight numbers and Flight objects. It provides a menu where the user can input a flight number and it will print the flight details to the terminal.
 
-### FlightPrinter
-takes in a Flight object and prints the following:
-- Flight number
-- Origin airport
-- Destination airport
-- Departure time
-- Arrival time
-- Duration
-
-### FileReader
-Takes a String containing file path.
-Reads a .txt file with comma separated values in the order:
-- airport code (E.G. JFK)
-- airport name (E.G. John F. Kennedy International Airport)
-- airport latitude (E.G. 40.6398)
-- airport longitude (E.G. -73.7789)
-- Time Zone (E.G. EST)
 
