@@ -1,7 +1,12 @@
-This is my Flight Search Readme
+This app will be a tool to search for the best route between multiple cities. The goal is to help travelers find an ideal route for a trip that will visit multiple cities, rather than searching for each leg independently. The tool will optimise for either lowest overall cost, shortest overall flight duration, or fewest layovers/stops.
 
 # Airport
-The airport class holds the airport name, code, time zone, and geocoords. From which any flight distance and duration can be derived.
+The airport class holds the airport details:
+- String code
+- String name
+- double lat (latitude)
+- double lon (longitude)
+- String time zone
 
 # AirportPrinter
 This class prints airport data to the console
@@ -15,16 +20,16 @@ Reads a .txt file with comma separated values in the order:
 - airport longitude (E.G. -73.7789)
 - Time Zone (E.G. EST)
 
-getAirports method will populate an array of type Airport.
+getAirports() method will populate an array of type Airport.
 
 # Flight
 The flight class holds:
-- flight origin
-- flight destination
-- total flight distance (derived from origin lat & lon and destination lat & lon)
-- departureTime
-- arrivalTime (derived from distance)
-- duration (derived from distance)
+- Airport origin
+- Airport destination
+- Double distance
+- LocalTime departureTime
+- LocalTime arrivalTime 
+- Duration duration 
 
 There are two constructor methods:
 1) will generate a flight number
