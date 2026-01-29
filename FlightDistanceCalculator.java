@@ -1,4 +1,4 @@
-public class Haversine {
+public class FlightDistanceCalculator {
 
     public static double calcDistance(Airport airport1, Airport airport2){
         double lat1 = airport1.getLat();
