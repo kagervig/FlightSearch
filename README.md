@@ -1,7 +1,7 @@
 # Flight Search App
 This app will be a tool to search for the best route between multiple cities. The goal is to help travelers find an ideal route for a trip that will visit multiple cities, rather than searching for each leg independently. The tool will optimise for either lowest overall cost, shortest overall flight duration, or fewest layovers/stops.
 
-Written with Java & NextJS
+Written with Java
 
 # Models
 
