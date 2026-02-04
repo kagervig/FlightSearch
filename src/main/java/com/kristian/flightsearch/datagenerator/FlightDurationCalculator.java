@@ -1,3 +1,4 @@
+package com.kristian.flightsearch.datagenerator;
 import java.time.Duration;
 
 

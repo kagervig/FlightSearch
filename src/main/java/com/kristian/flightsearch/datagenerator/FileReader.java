@@ -1,7 +1,12 @@
+package com.kristian.flightsearch.datagenerator;
+
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.Scanner;
+
+import com.kristian.flightsearch.utils.AirportPrinter;
+import com.kristian.flightsearch.models.Airport;
 
 public class FileReader {
     private Airport[] airports;

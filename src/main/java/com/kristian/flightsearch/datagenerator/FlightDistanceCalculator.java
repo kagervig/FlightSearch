@@ -1,3 +1,7 @@
+package com.kristian.flightsearch.datagenerator;
+
+import com.kristian.flightsearch.models.Airport;
+
 public class FlightDistanceCalculator {
 
     public static double calcDistance(Airport airport1, Airport airport2){

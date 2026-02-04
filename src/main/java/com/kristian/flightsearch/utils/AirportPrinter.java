@@ -1,3 +1,7 @@
+package com.kristian.flightsearch.utils;
+
+import com.kristian.flightsearch.models.Airport;
+
 public class AirportPrinter {
     
     Airport airport;

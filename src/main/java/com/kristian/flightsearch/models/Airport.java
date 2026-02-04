@@ -1,3 +1,4 @@
+package com.kristian.flightsearch.models;
 
 public class Airport {
     String name;

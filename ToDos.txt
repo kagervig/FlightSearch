@@ -1,0 +1,25 @@
+don't conflate route with flight.
+define route as journey between origin and destination
+
+generate txt file with flights
+read flightList from file, rather than generating every time
+once read, report total routes, total flights per route
+
+
+
+search a flight, find lowest price
+find all routes between A and B with a stop in C
+find all routes between A and B with a stop in C and D
+search a route with the shortest duration (including layover time)
+
+instead of hashmap for flight index, try a graph, weighted by price 
+
+a route between origin and destination could be through any number of nodes.
+a graph of these routes could be weighted by price.
+1) JFK to ATL (2 hours, $200), ATL to DEN (3 hours, $300), DEN to SEA (2 hours, $150)   Total $650, 7 hours + stops
+2) JFK to SEA (5 hours, $700)                                                           Total $700, 5 hours
+3) JFK to IAH (3 hours, $200), IAH to SEA (3 hours, $200)                               Total $400, 6 hours + stops
+
+traverse the graph to find the fastest route
+traverse the graph to find the cheapest route
+traverse the graph to find the route with fewest stops
