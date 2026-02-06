@@ -3,17 +3,17 @@ import java.time.Duration;
 
 
 public class FlightDurationCalculator {
-    
+
+    private static final double AVERAGE_CRUISE_SPEED_KNOTS = 460.0;
+
     /**
      * Calculate flight duration from distance in nautical miles.
-     * 
+     *
      * @param distanceNM Distance in nautical miles
      * @return LocalTime representing duration (hours, minutes)
      */
     public static Duration calculateFlightDuration(double distanceNM) {
-        // Average speed in knots (nautical miles per hour)
-        // Commercial jets cruise at ~450-480 knots
-        double avgSpeedKnots = 460.0;
+        double avgSpeedKnots = AVERAGE_CRUISE_SPEED_KNOTS;
         
         // Base flight time in hours
         double baseTimeHours = distanceNM / avgSpeedKnots;

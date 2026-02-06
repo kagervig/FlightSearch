@@ -1,29 +1,40 @@
 package com.kristian.flightsearch.flightgraph;
+
+import java.time.Duration;
+
 public class Edge {
     private AirportVertex start;
     private AirportVertex end;
-    private Integer weight;
+    private Integer price;
+    private Duration duration;
     private String flightNumber;
 
-    public Edge(AirportVertex start, AirportVertex end, Integer weight, String flightNumber){
+    public Edge(AirportVertex start, AirportVertex end, Integer price, Duration duration, String flightNumber) {
         this.start = start;
         this.end = end;
-        this.weight = weight;
+        this.price = price;
+        this.duration = duration;
         this.flightNumber = flightNumber;
 
     }
 
-    public AirportVertex getStart(){
+    public AirportVertex getStart() {
         return this.start;
     }
-    public AirportVertex getEnd(){
+
+    public AirportVertex getEnd() {
         return this.end;
     }
-    public Integer getWeight(){
-        return this.weight;
+
+    public Integer getPrice() {
+        return this.price;
     }
-    public String getFlightNum(){
+    public Duration getDuration(){
+        return this.duration;
+    }
+
+    public String getFlightNum() {
         return this.flightNumber;
     }
-    
+
 }

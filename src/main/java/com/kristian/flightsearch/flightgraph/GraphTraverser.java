@@ -1,5 +1,6 @@
 package com.kristian.flightsearch.flightgraph;
 
+import java.time.Duration;
 import java.util.ArrayList;
 
 public class GraphTraverser {
@@ -21,7 +22,7 @@ public class GraphTraverser {
         System.out.println();
     }
 
-    public static void depthFirstTraversal(AirportVertex origin, AirportVertex destination, ArrayList<AirportVertex> visitedVertices, int legs, String message){
+    public static void depthFirstTraversal(AirportVertex origin, AirportVertex destination, ArrayList<AirportVertex> visitedVertices, int legs, String message, Duration totalDuration, Integer ticketPrice){
 
         message+= origin.getData().getCode() + " --> ";
         legs++;
@@ -29,46 +30,58 @@ public class GraphTraverser {
         for (Edge e : origin.getEdges()){
             AirportVertex neighbour = e.getEnd();
             if (e.getEnd() == destination){
-                System.out.println("Route Found between " + origin.getData().getCode() + " and " + destination.getData().getCode());
+                String originCode = message.substring(0,3); //fixes bug where wrong origin was printed
+                System.out.println("Possible route Found between " + originCode + " and " + destination.getData().getCode());
                 System.out.println(message + destination.getData().getCode());
                 System.out.println(legs + " stops");
+                System.out.println();
                 return;
             } 
             if (!visitedVertices.contains(neighbour)){
                 visitedVertices.add(neighbour);
-                depthFirstTraversal(neighbour, destination, visitedVertices, legs, message);
+                depthFirstTraversal(neighbour, destination, visitedVertices, legs, message, totalDuration, ticketPrice);
             }
-            System.out.println();
-
             
         }
-
-
-
-
     }
 
+    /*
+    Duration total = duration1.plus(duration2);
+    You can also chain them:
+        Duration total = duration1.plus(duration2).plus(duration3);
+    Or use plusHours(), plusMinutes(), etc. for adding specific units:  
+        Duration extended = duration1.plusHours(2).plusMinutes(30); 
+    */
 
-
-
-
-    public static void breadthFirstSearch(AirportVertex start, ArrayList<AirportVertex> visitedVertices){
+    public static void breadthFirstSearch(AirportVertex origin, AirportVertex destination, ArrayList<AirportVertex> visitedVertices){
         Queue visitQueue = new Queue();
-        visitQueue.enqueue(start);
+        visitQueue.enqueue(origin);
+        String message = origin.getData().getCode() + " --> ";
+        int legs = 0;
         
         while (!visitQueue.isEmpty()){
             AirportVertex current = visitQueue.dequeue();
-            System.out.println(current.getData());
+            System.out.println(current.getData().getCode());
 
             for (Edge e : current.getEdges()){
+                message+= current.getData().getCode() + " --> ";
+                legs++;
+
                 AirportVertex neighbour = e.getEnd();
+                if (e.getEnd() == destination){     //found target airport
+                    System.out.println("BFS Success");
+                }
                 if (!visitedVertices.contains(neighbour)){
                     visitedVertices.add(neighbour);
                     visitQueue.enqueue(neighbour);
                 }
+                System.out.println(message);
+                System.out.println(legs + " stops");
             }
         }
     }
+
+    
 
     public static void main(String[] args) {
         /* TestGraph class no longer exists; needs to be rewritten before use

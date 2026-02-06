@@ -167,20 +167,20 @@ class FlightTest {
     }
     
     @Test
-    @DisplayName("setdepartureTime should update the departure time")
+    @DisplayName("setDepartureTime should update the departure time")
     void testSetDepartureTime() {
         Flight flight = new Flight(jfk, lax, 2475.0, departureTime);
         LocalTime newDepartureTime = LocalTime.of(14, 45);
-        flight.setdepartureTime(newDepartureTime);
+        flight.setDepartureTime(newDepartureTime);
         assertEquals(newDepartureTime, flight.getDepartureTime());
     }
-    
+
     @Test
-    @DisplayName("setdArrivalTime should update the arrival time")
+    @DisplayName("setArrivalTime should update the arrival time")
     void testSetArrivalTime() {
         Flight flight = new Flight(jfk, lax, 2475.0, departureTime);
         LocalTime newArrivalTime = LocalTime.of(18, 30);
-        flight.setdArrivalTime(newArrivalTime);
+        flight.setArrivalTime(newArrivalTime);
         assertEquals(newArrivalTime, flight.getArrivalTime());
     }
     

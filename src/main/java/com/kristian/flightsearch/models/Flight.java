@@ -15,7 +15,7 @@ public class Flight {
     String flightNumber; 
     Duration duration;
     Integer price;
-    static String[] airlineCodes = {"AA","UA","DL","WN","B6","AS","NK","F9","G4","SY"};
+    private static final String[] AIRLINE_CODES = {"AA","UA","DL","WN","B6","AS","NK","F9","G4","SY"};
 
     public Flight(Airport origin, Airport destination, double distance, LocalTime departureTime){
         this.origin = origin;
@@ -88,17 +88,17 @@ public class Flight {
         this.distance = distance;
     }
 
-    public void setdepartureTime(LocalTime departureTime) {
+    public void setDepartureTime(LocalTime departureTime) {
         this.departureTime = departureTime;
     }
-    public void setdArrivalTime(LocalTime arrivalTime) {
+    public void setArrivalTime(LocalTime arrivalTime) {
         this.arrivalTime = arrivalTime;
     }
     public static String generateFlightNum(){
         Random random = new Random();
         int flightNum = random.nextInt(9999) + 1;
-        int randomAirline = random.nextInt(airlineCodes.length);
-        String airlineCode = airlineCodes[randomAirline];
+        int randomAirline = random.nextInt(AIRLINE_CODES.length);
+        String airlineCode = AIRLINE_CODES[randomAirline];
         return airlineCode + String.format(" %04d", flightNum);
     }
     public int flightPricer(int distance){

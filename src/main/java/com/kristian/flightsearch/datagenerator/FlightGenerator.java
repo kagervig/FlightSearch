@@ -1,15 +1,14 @@
 package com.kristian.flightsearch.datagenerator;
 
+import com.kristian.flightsearch.models.Airport;
+import com.kristian.flightsearch.models.Flight;
+import com.kristian.flightsearch.utils.AirportPrinter;
+import com.kristian.flightsearch.utils.FlightPrinter;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Scanner;
 import java.util.concurrent.ThreadLocalRandom;
-
-import com.kristian.flightsearch.utils.AirportPrinter;
-import com.kristian.flightsearch.utils.FlightPrinter;
-import com.kristian.flightsearch.models.Airport;
-import com.kristian.flightsearch.models.Flight;
 
 
 public class FlightGenerator {
@@ -128,7 +127,7 @@ public class FlightGenerator {
         System.out.println("or 0 to quit");
         System.out.println("Enter an origin airport: ");
         String origin = scnr.nextLine();
-        if (origin == "0"){
+        if (origin.equals("0")){
             return;
         }
         System.out.println("Enter a destination airport: ");

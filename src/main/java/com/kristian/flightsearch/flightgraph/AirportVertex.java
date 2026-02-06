@@ -1,6 +1,7 @@
 package com.kristian.flightsearch.flightgraph;
 
 import java.util.ArrayList;
+import java.time.Duration;
 
 import com.kristian.flightsearch.utils.AirportPrinter;
 import com.kristian.flightsearch.utils.FlightPrinter;
@@ -15,8 +16,8 @@ public class AirportVertex {
         this.edges = new ArrayList<Edge>();
     }
 
-    public void addEdge(AirportVertex endVertex, Integer weight, String flightNumber){
-        this.edges.add(new Edge(this, endVertex, weight, flightNumber));
+    public void addEdge(AirportVertex endVertex, Integer weight, Duration duration, String flightNumber){
+        this.edges.add(new Edge(this, endVertex, weight, duration, flightNumber));
     }
 
     public void removeEdge(AirportVertex endVertex){
@@ -32,7 +33,7 @@ public class AirportVertex {
     }
     
 
-    public void print(boolean showWeight) {
+    public void print(boolean showWeight) {         //prints all of the edges from a given vertex
 		String message = "";
         AirportPrinter ap = new AirportPrinter();
         FlightPrinter fp = new FlightPrinter();
@@ -70,7 +71,9 @@ public class AirportVertex {
 			// Example: adds " (3)" if the edge weight is 3
 			if (showWeight) {
 				//message += " [" + this.edges.get(i).getFlightNum() + "  $" + this.edges.get(i).getWeight() + "]";
-                message += " [$" + this.edges.get(i).getWeight() + "]";
+                long hours = this.edges.get(i).getDuration().toHours();
+                long minutes = this.edges.get(i).getDuration().toMinutes();
+                message += " [$" + this.edges.get(i).getPrice() + String.format(" %02dh %02dm]", hours, minutes);
 			}
 			
 			// If this isn't the last edge, add a comma separator

@@ -1,9 +1,89 @@
-don't conflate route with flight.
-define route as journey between origin and destination
+Features to Add
+- add time as a weight for edges
 
-generate txt file with flights
-read flightList from file, rather than generating every time
-once read, report total routes, total flights per route
+- function returns true/false - is a route possible? does the inbound flight arrive in time to catch the next one?
+- DFS - find total price for routes
+- DFS - find total time for routes
+
+- BFS - will find shortest route between vertices
+- BFS - are the connections possible?
+- BFS - find total price + time for route
+
+- Dijkstras aslgorithm
+
+
+Critical Bugs to Fix
+2. Menu routing is broken — Main.java:121, 124
+- Option 5 (BFS) calls flightNumSearch() instead of actual BFS
+- Option 6 (Dijkstra) calls flightRouteSearch() instead of Dijkstra
+3. Test file won't compile — FlightTest.java
+- Has duplicate package declaration and incorrect import paths
+4. Null pointer risks — FlightGenerator.java:113, 141
+- flightNumSearch() and flightRouteSearch() don't handle null results from HashMap
+lookups
+
+---
+Design Issues
+
+5. Dijkstra is implemented but never used
+- The algorithm exists in Dijkstra.java but isn't integrated into the menu system
+- Users can't actually find lowest-cost multi-leg routes
+6. Duplicate classes
+- Graph.java (generic, unused) vs FlightGraph.java (actual implementation)
+- Two different generateFlights() implementations in FlightWriter and
+FlightGenerator
+7. Hardcoded file paths
+- "top10usa.txt" and "flights.txt" are scattered throughout the code
+- Should be configurable or passed as parameters
+8. Airport vertex lookup belongs in FlightGraph
+- Main.java:36-40 builds a HashMap for vertex lookup that should be encapsulated
+in the graph class
+
+---
+Code Quality
+
+9. Setter naming typos — Flight.java
+- setdepartureTime() and setdArrivalTime() should be setDepartureTime() and
+setArrivalTime()
+10. Magic numbers scattered throughout
+- Speed (460 knots) in FlightDurationCalculator
+- Earth radius (6371 km) in FlightDistanceCalculator
+- Airline codes array in Flight.java
+- Should be named constants
+11. Unused code
+- Node.java (binary tree node) is never used
+- Custom Queue/LinkedList implemented but not used by BFS
+- Multiple main() methods in utility classes (testing artifacts)
+
+---
+Testing Gaps
+
+12. No tests for graph algorithms — Dijkstra.java, GraphTraverser.java
+13. No tests for data I/O — FlightGenerator, FlightReader, FlightWriter
+14. Price randomness makes testing difficult
+- Multiple random multipliers with no seed for reproducibility
+
+---
+Suggested Priority Order
+┌──────────┬──────────────────────────────────────┬────────┐
+│ Priority │                 Item                 │ Effort │
+├──────────┼──────────────────────────────────────┼────────┤
+│ 1        │ Fix String == comparisons (#1)       │ Low    │
+├──────────┼──────────────────────────────────────┼────────┤
+│ 2        │ Fix menu routing (#2)                │ Low    │
+├──────────┼──────────────────────────────────────┼────────┤
+│ 3        │ Fix test compilation (#3)            │ Low    │
+├──────────┼──────────────────────────────────────┼────────┤
+│ 4        │ Add null checks (#4)                 │ Low    │
+├──────────┼──────────────────────────────────────┼────────┤
+│ 5        │ Integrate Dijkstra into menu (#5)    │ Medium │
+├──────────┼──────────────────────────────────────┼────────┤
+│ 6        │ Add tests for graph algorithms (#12) │ Medium │
+├──────────┼──────────────────────────────────────┼────────┤
+│ 7        │ Consolidate duplicate code (#6)      │ Medium │
+├──────────┼──────────────────────────────────────┼────────┤
+│ 8        │ Extract magic numbers (#10)          │ Low    │
+└──────────┴──────────────────────────────────────┴────────┘
 
 
 

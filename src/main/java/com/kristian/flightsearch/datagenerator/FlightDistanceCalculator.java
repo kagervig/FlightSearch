@@ -4,13 +4,14 @@ import com.kristian.flightsearch.models.Airport;
 
 public class FlightDistanceCalculator {
 
+    private static final int EARTH_RADIUS_KM = 6371;
+
     public static double calcDistance(Airport airport1, Airport airport2){
         double lat1 = airport1.getLat();
         double lat2 = airport2.getLat();
         double long1 = airport1.getLon();
         double long2 = airport2.getLon();
         double distance = 0.0;
-        final int EARTH_RADIUS = 6371; //6,371km
         double a, c;
 
         // Convert degrees to radians
@@ -28,7 +29,7 @@ public class FlightDistanceCalculator {
         * (Math.sin(deltaLong / 2.0));
 
         c = (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-        distance = EARTH_RADIUS * c;
+        distance = EARTH_RADIUS_KM * c;
 
         return distance;
     }
