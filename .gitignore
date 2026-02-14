@@ -1,6 +1,25 @@
-out/
-target/
+# OS
 .DS_Store
+
+# Backend (Java)
+backend/out/
+backend/target/
 *.class
 *.jar
-.vscode/
+
+# Frontend (Next.js)
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.vercel
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
+
+# Environment
+.env*
+
+# IDE (keeping .vscode for shared launch configs)
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
