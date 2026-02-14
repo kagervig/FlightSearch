@@ -1,65 +1,311 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
 
 export default function Home() {
+  const [numCities, setNumCities] = useState(1);
+  const [homeCity, setHomeCity] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [destinations, setDestinations] = useState<{ city: string; days: number }[]>([
+    { city: "", days: 3 },
+  ]);
+
+  const handleNumCitiesChange = (num: number) => {
+    setNumCities(num);
+    const newDestinations = [...destinations];
+    while (newDestinations.length < num) {
+      newDestinations.push({ city: "", days: 3 });
+    }
+    while (newDestinations.length > num) {
+      newDestinations.pop();
+    }
+    setDestinations(newDestinations);
+  };
+
+  const updateDestination = (index: number, field: "city" | "days", value: string | number) => {
+    const newDestinations = [...destinations];
+    if (field === "city") {
+      newDestinations[index].city = value as string;
+    } else {
+      newDestinations[index].days = value as number;
+    }
+    setDestinations(newDestinations);
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen">
+      {/* Navigation */}
+      <nav className="fixed top-0 w-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-md z-50 border-b border-slate-200 dark:border-slate-800">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <PlaneIcon className="w-8 h-8 text-sky-600 dark:text-sky-400" />
+            <span className="text-xl font-bold text-slate-900 dark:text-white">FlightSearch</span>
+          </div>
+          <div className="flex items-center gap-6">
+            <a href="#features" className="text-slate-600 dark:text-slate-300 hover:text-sky-600 dark:hover:text-sky-400 transition-colors">
+              Features
+            </a>
+            <button className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+              Plan Trip
+            </button>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+      </nav>
+
+      {/* Hero Section */}
+      <section className="pt-32 pb-20 px-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid lg:grid-cols-2 gap-12 items-start">
+            <div className="lg:sticky lg:top-32">
+              <h1 className="text-5xl font-bold text-slate-900 dark:text-white leading-tight mb-6">
+                Plan Your
+                <span className="text-sky-600 dark:text-sky-400"> Multi-City </span>
+                Adventure
+              </h1>
+              <p className="text-xl text-slate-600 dark:text-slate-300 mb-8">
+                Visit up to 5 cities and let our algorithms find the optimal route based on price, duration, or number of stops.
+              </p>
+              <div className="space-y-4 text-slate-600 dark:text-slate-400">
+                <div className="flex items-center gap-3">
+                  <CheckIcon className="w-5 h-5 text-sky-600" />
+                  <span>Optimized routing with Dijkstra&apos;s algorithm</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <CheckIcon className="w-5 h-5 text-sky-600" />
+                  <span>Compare prices across multiple routes</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <CheckIcon className="w-5 h-5 text-sky-600" />
+                  <span>Flexible trip duration per city</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Trip Planner Card */}
+            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-8 border border-slate-200 dark:border-slate-700">
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-6">Plan Your Trip</h2>
+
+              <div className="space-y-6">
+                {/* Number of Cities */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-3">
+                    How many cities do you want to visit?
+                  </label>
+                  <div className="flex gap-2">
+                    {[1, 2, 3, 4, 5].map((num) => (
+                      <button
+                        key={num}
+                        onClick={() => handleNumCitiesChange(num)}
+                        className={`w-12 h-12 rounded-lg font-semibold transition-all ${
+                          numCities === num
+                            ? "bg-sky-600 text-white"
+                            : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"
+                        }`}
+                      >
+                        {num}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Home City */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">
+                    Home City (Starting Point)
+                  </label>
+                  <input
+                    type="text"
+                    value={homeCity}
+                    onChange={(e) => setHomeCity(e.target.value)}
+                    placeholder="e.g. JFK, LAX, ORD"
+                    className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-sky-500 focus:border-transparent outline-none"
+                  />
+                </div>
+
+                {/* Start Date */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-sky-500 focus:border-transparent outline-none"
+                  />
+                </div>
+
+                {/* Destinations */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-3">
+                    Destinations
+                  </label>
+                  <div className="space-y-3">
+                    {destinations.map((dest, index) => (
+                      <div key={index} className="flex gap-3 items-center">
+                        <div className="w-8 h-8 rounded-full bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-400 flex items-center justify-center text-sm font-semibold flex-shrink-0">
+                          {index + 1}
+                        </div>
+                        <input
+                          type="text"
+                          value={dest.city}
+                          onChange={(e) => updateDestination(index, "city", e.target.value)}
+                          placeholder="City code (e.g. LAX)"
+                          className="flex-1 px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-sky-500 focus:border-transparent outline-none"
+                        />
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <input
+                            type="number"
+                            min="1"
+                            max="30"
+                            value={dest.days}
+                            onChange={(e) => updateDestination(index, "days", parseInt(e.target.value) || 1)}
+                            className="w-16 px-3 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white text-center focus:ring-2 focus:ring-sky-500 focus:border-transparent outline-none"
+                          />
+                          <span className="text-sm text-slate-500 dark:text-slate-400">days</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Optimize By */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">
+                    Optimize By
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button className="px-4 py-2 rounded-lg bg-sky-100 dark:bg-sky-900 text-sky-700 dark:text-sky-300 font-medium text-sm border-2 border-sky-500">
+                      Price
+                    </button>
+                    <button className="px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-medium text-sm border-2 border-transparent hover:border-slate-300 dark:hover:border-slate-500">
+                      Duration
+                    </button>
+                  </div>
+                </div>
+
+                <button className="w-full bg-sky-600 hover:bg-sky-700 text-white py-4 rounded-lg font-medium text-lg transition-colors flex items-center justify-center gap-2">
+                  <SearchIcon className="w-5 h-5" />
+                  Find Best Route
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Stats Section */}
+      <section className="py-12 px-6 bg-slate-100 dark:bg-slate-800/50">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid grid-cols-3 gap-8 text-center">
+            <div>
+              <div className="text-4xl font-bold text-sky-600 dark:text-sky-400">10</div>
+              <div className="text-slate-600 dark:text-slate-400 mt-1">US Airports</div>
+            </div>
+            <div>
+              <div className="text-4xl font-bold text-sky-600 dark:text-sky-400">5</div>
+              <div className="text-slate-600 dark:text-slate-400 mt-1">Max Cities</div>
+            </div>
+            <div>
+              <div className="text-4xl font-bold text-sky-600 dark:text-sky-400">2</div>
+              <div className="text-slate-600 dark:text-slate-400 mt-1">Optimization Modes</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section id="features" className="py-20 px-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-4">Powerful Route Finding</h2>
+            <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
+              Built on graph theory and pathfinding algorithms to find you the best routes across the network.
+            </p>
+          </div>
+          <div className="grid md:grid-cols-2 gap-8 max-w-2xl mx-auto">
+            <FeatureCard
+              icon={<DollarIcon className="w-8 h-8" />}
+              title="Cheapest Route"
+              description="Dijkstra's algorithm finds the lowest total cost path, even with layovers."
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <FeatureCard
+              icon={<ClockIcon className="w-8 h-8" />}
+              title="Fastest Route"
+              description="Optimize for minimum travel time including flight duration."
+            />
+          </div>
         </div>
-      </main>
+      </section>
+
+      {/* Footer */}
+      <footer className="py-12 px-6 border-t border-slate-200 dark:border-slate-800">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <PlaneIcon className="w-6 h-6 text-sky-600 dark:text-sky-400" />
+            <span className="font-semibold text-slate-900 dark:text-white">FlightSearch</span>
+          </div>
+          <div className="text-slate-500 dark:text-slate-400 text-sm">
+            Built with graph algorithms
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
+
+function FeatureCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700 hover:shadow-lg transition-shadow">
+      <div className="w-14 h-14 bg-sky-100 dark:bg-sky-900/50 rounded-lg flex items-center justify-center text-sky-600 dark:text-sky-400 mb-4">
+        {icon}
+      </div>
+      <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">{title}</h3>
+      <p className="text-slate-600 dark:text-slate-400">{description}</p>
+    </div>
+  );
+}
+
+function PlaneIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z" />
+    </svg>
+  );
+}
+
+function SearchIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
+    </svg>
+  );
+}
+
+function CheckIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+function DollarIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" x2="12" y1="2" y2="22" />
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+    </svg>
+  );
+}
+
+function ClockIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  );
+}
+
