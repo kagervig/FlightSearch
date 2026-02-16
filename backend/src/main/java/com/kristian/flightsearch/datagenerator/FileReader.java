@@ -2,8 +2,10 @@ package com.kristian.flightsearch.datagenerator;
 
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.utils.AirportPrinter;
+import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileNotFoundException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Scanner;
@@ -21,11 +23,16 @@ public class FileReader {
         airportMap = new HashMap<>();
 
         try {
-            File file = new File(filePath);
-            Scanner scanner = new Scanner(file);
+            BufferedReader reader = getReader(filePath);
+            if (reader == null) {
+                System.out.println("File not found: " + filePath);
+                airports = new Airport[0];
+                return;
+            }
 
-            while (scanner.hasNextLine()) {
-                String line = scanner.nextLine().trim();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                line = line.trim();
                 if (line.isEmpty()) continue;
 
                 String[] airportData = line.split(",");
@@ -44,14 +51,37 @@ public class FileReader {
                 }
             }
 
-            scanner.close();
+            reader.close();
             airports = airportList.toArray(new Airport[0]);
 
-        } catch (FileNotFoundException e) {
-            System.out.println("File not found: " + filePath);
+        } catch (Exception e) {
+            System.out.println("Error reading file: " + filePath + " - " + e.getMessage());
             airports = new Airport[0];
             airportMap = new HashMap<>();
         }
+    }
+
+    /**
+     * Gets a reader for the file - tries classpath first (for JAR), then filesystem (for local dev)
+     */
+    private BufferedReader getReader(String filePath) {
+        // Try classpath first (works when running from JAR)
+        InputStream is = getClass().getClassLoader().getResourceAsStream(filePath);
+        if (is != null) {
+            return new BufferedReader(new InputStreamReader(is));
+        }
+
+        // Fall back to filesystem (works for local development)
+        File file = new File(filePath);
+        if (file.exists()) {
+            try {
+                return new BufferedReader(new java.io.FileReader(file));
+            } catch (Exception e) {
+                return null;
+            }
+        }
+
+        return null;
     }
 
     public Airport[] getAirports() {
