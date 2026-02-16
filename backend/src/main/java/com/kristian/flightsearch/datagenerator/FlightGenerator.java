@@ -2,7 +2,6 @@ package com.kristian.flightsearch.datagenerator;
 
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
-import com.kristian.flightsearch.utils.AirportPrinter;
 import com.kristian.flightsearch.utils.FlightPrinter;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -14,6 +13,8 @@ import java.util.concurrent.ThreadLocalRandom;
 public class FlightGenerator {
 
     public static void main(String[] args) {
+        findMaxFlightLength();
+        /* 
         String filePath = "top10usa.txt";
         Airport[] airports = getAirports(filePath);         //populates list of airports
         AirportPrinter ap = new AirportPrinter();           //instantiate a new airport printer
@@ -33,7 +34,7 @@ public class FlightGenerator {
         routeCounter(flightIndex);
         flightNumSearch(flightList);
         flightRouteSearch(flightIndex);
-
+        */
 
     }
 
@@ -54,10 +55,10 @@ public class FlightGenerator {
         HashMap<String, ArrayList<Flight>> flightIndex = new HashMap();
         
 
-        //create hashmap of flight route (E.G. JFKSEA)
-        //value is arraylist of type Flight
+        //creates a hashmap of flight route (E.G. JFKSEA)
+        // value is arraylist of type Flight
         //iterate through flightList, for each flight:
-            //concat origin, dest as key.
+            //concatenate origin & dest as key.
             //if origin-destination are the same, add to arraylist
 
         for (Flight f : flightList.values()){
@@ -66,23 +67,6 @@ public class FlightGenerator {
             flightIndex.putIfAbsent(route, new ArrayList<>());
             flightIndex.get(route).add(f);
         }
-
-        //testing code
-        /* 
-        System.out.println("hashmap size: " + flightIndex.size());
-        if (flightIndex.containsKey("JFKSEA")){
-            System.out.println("JFKSEA exists");
-        } else {
-            System.out.println("JFKSEA not found");
-        }
-         if (flightIndex.containsKey("SEAJFK")){
-            System.out.println("SEAJFK exists");
-        } else {
-            System.out.println("SEAJFK not found");
-        }
-            */
-        
-        
 
         return flightIndex;
     }
@@ -112,7 +96,7 @@ public class FlightGenerator {
             fp.print(flightList.get(choice));
             System.out.println("Enter a flight number: ");
             choice = scnr.nextLine(); 
-            if (choice == "0"){
+            if (choice.equals("0")){
                 return;
             }
             fp.print(flightList.get(choice));
@@ -145,7 +129,6 @@ public class FlightGenerator {
                     fp.print(f);
                 }
             }
-
             
             System.out.println("Enter an origin airport: ");
             origin = scnr.nextLine();
@@ -175,15 +158,73 @@ public class FlightGenerator {
             }
             Airport origin = airports[one];
             Airport destination = airports[two];
-
-            String newFlightNum = Flight.generateFlightNum();
+            if (isFlightPossible(origin, destination)){
+                String newFlightNum = Flight.generateFlightNum();
             if (flightList.get(newFlightNum) != null){
                 newFlightNum = Flight.generateFlightNum();
             }
             Flight newFlight = new Flight(origin, destination, FlightDistanceCalculator.calcDistance(origin, destination), generateRandomLocalTime(), newFlightNum);
-            flightList.put(newFlightNum, newFlight);    
+            flightList.put(newFlightNum, newFlight);  
+            }              
         }
         return flightList;
+    }
+
+    public static boolean isFlightPossible(Airport origin, Airport destination) {
+
+    double flightDistanceKm = FlightDistanceCalculator.calcDistance(origin, destination);
+    double runwayLengthMeters = (double) origin.getRunwayLength();
+
+    // 1. Constants for 1,000m ASL elevation adjustment (~23.3% increase)
+    final double ALTITUDE_FACTOR = 1.233;
+    
+    // 2. Performance Baselines (Range in km, Runway in meters at Sea Level)
+    final double MIN_RANGE = 0.0;
+    final double MAX_RANGE = 16700.0; // A350-1000 Max Range
+    
+    // 3. Define Runway Requirements at MTOW (adjusted for 1,000m ASL)
+    // A220-300 needs ~1,890m at Sea Level; at 1,000m it needs ~2,330m
+    final double MIN_RUNWAY_REQUIRED = 1500 * ALTITUDE_FACTOR; // Short ferry flight
+    final double MAX_RUNWAY_REQUIRED = 2900 * ALTITUDE_FACTOR; // Ultra-long haul
+    
+    // 4. Hard range limit (No commercial aircraft exceeds ~18,000km easily)
+    if (flightDistanceKm > 18000) return false;
+    
+    // 5. Model the required runway based on distance
+    // We assume a linear-to-exponential growth for runway need vs range
+    double requiredRunway;
+    if (flightDistanceKm <= 6300) {
+        // A220 class range
+        double ratio = flightDistanceKm / 6300.0;
+        requiredRunway = (1890 * ALTITUDE_FACTOR) * (0.8 + 0.2 * ratio);
+    } else {
+        // Widebody class range (up to 16,700km)
+        double ratio = (flightDistanceKm - 6300) / (MAX_RANGE - 6300);
+        double startRunway = 1890 * ALTITUDE_FACTOR;
+        double endRunway = 3100 * ALTITUDE_FACTOR; // 787-9/A350 MTOW runway
+        requiredRunway = startRunway + (ratio * (endRunway - startRunway));
+    }
+    
+    return runwayLengthMeters >= requiredRunway;
+}
+
+    public static void findMaxFlightLength(){
+        Airport[] airports = getAirports("top100global.txt");
+        System.out.println("Total airports: " + airports.length);
+        double maxFlightDistance = 0;
+        String longestRoute = "No routes found";
+
+        for (int i = 0; i < airports.length; i++){
+            for (int j = 1; j < airports.length; j++){
+                if (FlightDistanceCalculator.calcDistance(airports[i], airports[j]) > maxFlightDistance){
+                    maxFlightDistance = FlightDistanceCalculator.calcDistance(airports[i], airports[j]);
+                    longestRoute = (airports[i].getCode() + " to " + airports[j].getCode());
+                }
+            }
+        }
+        System.out.println("Longest route is: " + longestRoute);
+        System.out.printf("Total Distance: %.0f", maxFlightDistance);
+        
     }
 
     public static Airport[] getAirports(String filePath){

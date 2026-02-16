@@ -14,8 +14,12 @@ public class FlightReader {
     
     
     public static HashMap<String, Flight> readFlights(String filePath) {
+        return readFlights(filePath, "top100global.txt");
+    }
+
+    public static HashMap<String, Flight> readFlights(String filePath, String airportFile) {
         HashMap<String, Flight> flightList = new HashMap<>();
-        Airport[] airports = getAirports("top10usa.txt");
+        Airport[] airports = getAirports(airportFile);
         
         try (BufferedReader reader = new BufferedReader(new java.io.FileReader(filePath))) {
             String line;

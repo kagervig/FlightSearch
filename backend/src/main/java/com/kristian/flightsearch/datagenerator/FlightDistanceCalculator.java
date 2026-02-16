@@ -39,8 +39,8 @@ public class FlightDistanceCalculator {
 
     public static void main(String[] args) {
         double distance = 0.0;
-        Airport JFK = new Airport("JFK", "John F. Kennedy International Airport", 40.641766, -73.780968, "EST");
-        Airport DEN = new Airport("DEN", "Denver International Airport", 39.849312, -104.673828, "EST");
+        Airport JFK = new Airport("JFK", "John F. Kennedy International Airport", 40.641766, -73.780968, "EST", 4423);
+        Airport DEN = new Airport("DEN", "Denver International Airport", 39.849312, -104.673828, "MST", 4877);
         distance = calcDistance(JFK, DEN);
         distance *= 0.621371;
 

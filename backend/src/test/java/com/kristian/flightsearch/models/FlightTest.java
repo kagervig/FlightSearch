@@ -1,12 +1,11 @@
-package test.models;
-package src.test.models;
+package com.kristian.flightsearch.models;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import DataGenerator.FlightDurationCalculator;
-
 import org.junit.jupiter.api.DisplayName;
 import static org.junit.jupiter.api.Assertions.*;
+
+import com.kristian.flightsearch.datagenerator.FlightDurationCalculator;
 
 import java.time.Duration;
 import java.time.LocalTime;
@@ -21,8 +20,8 @@ class FlightTest {
     @BeforeEach
     void setUp() {
         // Create test airports
-        jfk = new Airport("JFK", "John F. Kennedy International Airport", 40.6413, -73.7781, "America/New_York");
-        lax = new Airport("LAX", "Los Angeles International Airport", 33.9416, -118.4085, "America/Los_Angeles");
+        jfk = new Airport("JFK", "John F. Kennedy International Airport", 40.6413, -73.7781, "America/New_York", 4423);
+        lax = new Airport("LAX", "Los Angeles International Airport", 33.9416, -118.4085, "America/Los_Angeles", 3939);
         departureTime = LocalTime.of(10, 30);
     }
     
@@ -125,7 +124,7 @@ class FlightTest {
     @DisplayName("setOrigin should update the origin airport")
     void testSetOrigin() {
         Flight flight = new Flight(jfk, lax, 2475.0, departureTime);
-        Airport ord = new Airport("ORD", "O'Hare International Airport", 41.9742, -87.9073, "America/Chicago");
+        Airport ord = new Airport("ORD", "O'Hare International Airport", 41.9742, -87.9073, "America/Chicago", 3962);
         flight.setOrigin(ord);
         assertEquals(ord, flight.getOrigin());
     }
@@ -134,7 +133,7 @@ class FlightTest {
     @DisplayName("setDestination should update the destination airport")
     void testSetDestination() {
         Flight flight = new Flight(jfk, lax, 2475.0, departureTime);
-        Airport sfo = new Airport("SFO", "San Francisco International Airport", 37.6213, -122.3790, "America/Los_Angeles");
+        Airport sfo = new Airport("SFO", "San Francisco International Airport", 37.6213, -122.3790, "America/Los_Angeles", 3618);
         flight.setDestination(sfo);
         assertEquals(sfo, flight.getDestination());
     }
@@ -191,13 +190,14 @@ class FlightTest {
         
         assertNotNull(flightNumber);
         // Format should be "XX ####" (airline code space 4-digit number)
-        assertTrue(flightNumber.matches("[A-Z]{2} \\d{4}"), 
+        assertTrue(flightNumber.matches("[A-Z0-9]{2} \\d{4}"),
             "Flight number should match format 'XX ####', but got: " + flightNumber);
         
         // Check if airline code is from the valid list
         String airlineCode = flightNumber.substring(0, 2);
+        String[] validCodes = {"AA","UA","DL","WN","B6","AS","NK","F9","G4","SY"};
         boolean validAirline = false;
-        for (String code : Flight.airlineCodes) {
+        for (String code : validCodes) {
             if (code.equals(airlineCode)) {
                 validAirline = true;
                 break;

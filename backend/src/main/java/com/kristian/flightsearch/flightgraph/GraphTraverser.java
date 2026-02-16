@@ -22,10 +22,19 @@ public class GraphTraverser {
         System.out.println();
     }
 
-    public static void depthFirstTraversal(AirportVertex origin, AirportVertex destination, ArrayList<AirportVertex> visitedVertices, int legs, String message, Duration totalDuration, Integer ticketPrice){
+
+
+
+
+    public static void depthFirstTraversal(AirportVertex origin, AirportVertex destination, ArrayList<AirportVertex> visitedVertices, int legs, String message, Duration totalDuration){
 
         message+= origin.getData().getCode() + " --> ";
         legs++;
+        if (legs > 5){
+            return;
+        }
+
+        
         
         for (Edge e : origin.getEdges()){
             AirportVertex neighbour = e.getEnd();
@@ -33,13 +42,13 @@ public class GraphTraverser {
                 String originCode = message.substring(0,3); //fixes bug where wrong origin was printed
                 System.out.println("Possible route Found between " + originCode + " and " + destination.getData().getCode());
                 System.out.println(message + destination.getData().getCode());
-                System.out.println(legs + " stops");
+                System.out.println(legs-1 + " stops");
                 System.out.println();
                 return;
             } 
             if (!visitedVertices.contains(neighbour)){
                 visitedVertices.add(neighbour);
-                depthFirstTraversal(neighbour, destination, visitedVertices, legs, message, totalDuration, ticketPrice);
+                depthFirstTraversal(neighbour, destination, visitedVertices, legs, message, totalDuration);
             }
             
         }

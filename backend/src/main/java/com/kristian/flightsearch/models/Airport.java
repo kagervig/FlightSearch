@@ -6,14 +6,16 @@ public class Airport {
     double lat;
     double lon;
     String timeZone;
+    int runwayLength;
 
 
-    public Airport(String code, String name, double lat, double lon, String timeZone){
+    public Airport(String code, String name, double lat, double lon, String timeZone, int runwayLength){
         this.name = name;
         this.code = code;
         this.lat = lat;
         this.lon = lon;
         this.timeZone = timeZone;
+        this.runwayLength = runwayLength;
     }
     public String getName(){
         return this.name;
@@ -29,6 +31,9 @@ public class Airport {
     }
     public String getTimeZone(){
         return this.timeZone;
+    }
+    public int getRunwayLength(){
+        return this.runwayLength;
     }
     
 }

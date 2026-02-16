@@ -74,25 +74,23 @@ public class FlightGraph {
 
 
     public static void main(String[] args) {
-        FlightGraph flightNetwork = new FlightGraph(true, true); 
+        FlightGraph flightNetwork = new FlightGraph(true, true);
 
-        Airport JFK = new Airport("JFK", "John F. Kennedy International Airport", 40.6398,-73.7789,"EST");
-        Airport ATL = new Airport("ATL", "Hartsfield-Jackson Atlanta International Airport", 33.6404,-84.4199,"EST");
-        Airport LAX = new Airport("LAX", "Los Angeles International Airport", 33.9428,-118.4100,"PST");
+        Airport JFK = new Airport("JFK", "John F. Kennedy International Airport", 40.6398, -73.7789, "America/New_York", 4423);
+        Airport ATL = new Airport("ATL", "Hartsfield-Jackson Atlanta International Airport", 33.6404, -84.4199, "America/New_York", 3962);
+        Airport LAX = new Airport("LAX", "Los Angeles International Airport", 33.9428, -118.4100, "America/Los_Angeles", 3939);
 
         AirportVertex jfkVertex = flightNetwork.addVertex(JFK);
         AirportVertex atlVertex = flightNetwork.addVertex(ATL);
         AirportVertex laxVertex = flightNetwork.addVertex(LAX);
 
-        flightNetwork.addEdge(jfkVertex, laxVertex, 300, "UA 12");
-        flightNetwork.addEdge(atlVertex, laxVertex, 333, "UA 97");
-        flightNetwork.addEdge(atlVertex, jfkVertex, 700, "UA 82");
-        flightNetwork.addEdge(jfkVertex, laxVertex, 328, "UA 25");
-        flightNetwork.addEdge(atlVertex, laxVertex, 535, "UA 333");
-        flightNetwork.addEdge(laxVertex, atlVertex, 100, "UA 99");
-        flightNetwork.addEdge(jfkVertex, laxVertex, 200, "UA 656");
-
-        
+        flightNetwork.addEdge(jfkVertex, laxVertex, 300, Duration.ofHours(5).plusMinutes(30), "UA 12");
+        flightNetwork.addEdge(atlVertex, laxVertex, 333, Duration.ofHours(4).plusMinutes(15), "UA 97");
+        flightNetwork.addEdge(atlVertex, jfkVertex, 700, Duration.ofHours(2).plusMinutes(10), "UA 82");
+        flightNetwork.addEdge(jfkVertex, laxVertex, 328, Duration.ofHours(5).plusMinutes(45), "UA 25");
+        flightNetwork.addEdge(atlVertex, laxVertex, 535, Duration.ofHours(4).plusMinutes(30), "UA 333");
+        flightNetwork.addEdge(laxVertex, atlVertex, 100, Duration.ofHours(4).plusMinutes(0), "UA 99");
+        flightNetwork.addEdge(jfkVertex, laxVertex, 200, Duration.ofHours(5).plusMinutes(15), "UA 656");
 
         flightNetwork.print();
 

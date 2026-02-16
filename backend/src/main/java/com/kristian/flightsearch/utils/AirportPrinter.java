@@ -18,7 +18,7 @@ public class AirportPrinter {
     }
 
     public static void main(String[] args) {
-        Airport ATL = new Airport("ATL","Hartsfield-Jackson Atlanta International Airport",33.6404,-84.4199,"EST");
+        Airport ATL = new Airport("ATL","Hartsfield-Jackson Atlanta International Airport",33.6404,-84.4199,"EST", 3624);
 
         AirportPrinter ap = new AirportPrinter();
         ap.print(ATL);

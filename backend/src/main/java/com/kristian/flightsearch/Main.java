@@ -24,17 +24,16 @@ public class Main {
         ArrayList<AirportVertex> airportVertices = new ArrayList<AirportVertex>(); // declare arraylist of
                                                                                    // airportvertices
 
-        Airport[] airports = getAirports("top10usa.txt"); // get list of airports from file
+        FileReader fileReader = new FileReader("top100global.txt");
+        Airport[] airports = fileReader.getAirports();
         for (Airport a : airports) {
-            airportVertices.add(flightNetwork.addVertex(a)); // create new airportVertices from list of airports
+            airportVertices.add(flightNetwork.addVertex(a));
         }
 
-        FlightWriter.writeFlights(filepath, 50); // optional: generate and write flights to file
-        flightList = FlightReader.readFlights(filepath); // read flights from file
+        //FlightWriter.writeFlights(filepath, 15000, "top100global.txt"); // optional: generate and write flights to file
+        flightList = FlightReader.readFlights(filepath);
 
-        HashMap<String, ArrayList<Flight>> flightIndex = FlightGenerator.flightMapper(flightList); // generate new
-                                                                                                   // flightIndex
-                                                                                                   // hashmap
+        HashMap<String, ArrayList<Flight>> flightIndex = FlightGenerator.flightMapper(flightList);
 
         // Iterate through flightIndex and add edges
         for (ArrayList<Flight> flights : flightIndex.values()) {
@@ -49,12 +48,12 @@ public class Main {
         }
         flightNetwork.print();
         System.out.println("");
-        menu(flightIndex, flightList, flightNetwork);
+        menu(flightIndex, flightList, flightNetwork, fileReader);
 
     }
 
     public static void menu(HashMap<String, ArrayList<Flight>> flightIndex, HashMap<String, Flight> flightList,
-            FlightGraph flightNetwork) {
+            FlightGraph flightNetwork, FileReader fileReader) {
         Scanner scanner = new Scanner(System.in);
         String choice = "";
 
@@ -74,8 +73,8 @@ public class Main {
             choice = scanner.nextLine();
 
             ArrayList<AirportVertex> visitedVertices;
-            String origin = "";
-            String destination = "";
+            String origin;
+            String destination;
             AirportVertex originVertex;
             AirportVertex destVertex;
 
@@ -90,56 +89,41 @@ public class Main {
                     FlightGenerator.flightRouteSearch(flightIndex);
                     break;
                 case "4":
-
-                    System.out.print("Enter Origin Airport: ");
-                    System.out.flush();
-                    origin = scanner.nextLine();
-                    if (origin.equals("0")) {
-                        return;
-                    }
-                    System.out.print("Enter Destination Airport: ");
-                    System.out.flush();
-                    System.out.println("");
-                    destination = scanner.nextLine();
+                    origin = getValidAirportCode(scanner, fileReader, "Enter Origin Airport: ");
+                    if (origin == null) break;
+                    destination = getValidAirportCode(scanner, fileReader, "Enter Destination Airport: ");
+                    if (destination == null) break;
 
                     originVertex = flightNetwork.getVertex(origin);
                     destVertex = flightNetwork.getVertex(destination);
                     visitedVertices = new ArrayList<AirportVertex>();
 
-                    if (originVertex != null && destVertex != null) {
-                        GraphTraverser.depthFirstTraversal(originVertex, destVertex, visitedVertices, 0, "",
-                                Duration.ZERO, 0);
-                    } else {
-                        System.out.println("Invalid airport code(s).");
-                    }
+                    GraphTraverser.depthFirstTraversal(originVertex, destVertex, visitedVertices, 0, "",
+                            Duration.ZERO);
                     break;
                 case "5":
-                    // AirportVertex origin, AirportVertex destination, ArrayList<AirportVertex>
-                    // visitedVertices
-                    visitedVertices = new ArrayList<AirportVertex>();
-                    System.out.print("Enter Origin Airport: ");
-                    System.out.flush();
-                    origin = scanner.nextLine();
-                    System.out.print("Enter Destination Airport: ");
-                    System.out.flush();
-                    System.out.println("");
-                    destination = scanner.nextLine();
+                    origin = getValidAirportCode(scanner, fileReader, "Enter Origin Airport: ");
+                    if (origin == null) break;
+                    destination = getValidAirportCode(scanner, fileReader, "Enter Destination Airport: ");
+                    if (destination == null) break;
+
                     originVertex = flightNetwork.getVertex(origin);
                     destVertex = flightNetwork.getVertex(destination);
+                    visitedVertices = new ArrayList<AirportVertex>();
 
                     GraphTraverser.breadthFirstSearch(originVertex, destVertex, visitedVertices);
                     break;
                 case "6":
-                    System.out.print("Enter Origin Airport: ");
-                    System.out.flush();
-                    origin = scanner.nextLine();
+                    origin = getValidAirportCode(scanner, fileReader, "Enter Origin Airport: ");
+                    if (origin == null) break;
+
                     Map[] priceDictionary = Dijkstra.searchByPrice(flightNetwork, flightNetwork.getVertex(origin));
                     Dijkstra.printSearchResult(priceDictionary);
                     break;
                 case "7":
-                    System.out.print("Enter Origin Airport: ");
-                    System.out.flush();
-                    origin = scanner.nextLine();
+                    origin = getValidAirportCode(scanner, fileReader, "Enter Origin Airport: ");
+                    if (origin == null) break;
+
                     Map[] durationDictionary = Dijkstra.searchByDuration(flightNetwork,
                             flightNetwork.getVertex(origin));
                     Dijkstra.printSearchResult(durationDictionary);
@@ -153,7 +137,24 @@ public class Main {
         }
 
         scanner.close();
+    }
 
+    private static String getValidAirportCode(Scanner scanner, FileReader fileReader, String prompt) {
+        while (true) {
+            System.out.print(prompt);
+            System.out.flush();
+            String input = scanner.nextLine().toUpperCase();
+
+            if (input.equals("0")) {
+                return null;
+            }
+
+            if (fileReader.isValidAirportCode(input)) {
+                return input;
+            }
+
+            System.out.println("Invalid airport code '" + input + "'. Enter 0 to cancel.");
+        }
     }
 
     public static Airport[] getAirports(String filePath) {
