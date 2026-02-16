@@ -2,6 +2,19 @@
 
 import { useState } from "react";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+
+interface Route {
+  destination: string;
+  destinationName: string;
+  cheapestPrice: number;
+}
+
+interface SearchResult {
+  from: string;
+  routes: Route[];
+}
+
 export default function Home() {
   const [numCities, setNumCities] = useState(1);
   const [homeCity, setHomeCity] = useState("");
@@ -9,6 +22,10 @@ export default function Home() {
   const [destinations, setDestinations] = useState<{ city: string; days: number }[]>([
     { city: "", days: 3 },
   ]);
+  const [optimizeBy, setOptimizeBy] = useState<"price" | "duration">("price");
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<SearchResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleNumCitiesChange = (num: number) => {
     setNumCities(num);
@@ -30,6 +47,43 @@ export default function Home() {
       newDestinations[index].days = value as number;
     }
     setDestinations(newDestinations);
+  };
+
+  const handleSearch = async () => {
+    if (!homeCity) {
+      setError("Please enter your home city");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setResults(null);
+
+    try {
+      const response = await fetch(`${API_URL}/api/routes/cheapest?from=${homeCity.toUpperCase()}`);
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to search routes");
+      }
+
+      const data: SearchResult = await response.json();
+
+      // Filter results to only show destinations the user selected
+      const selectedCities = destinations.map(d => d.city.toUpperCase()).filter(c => c);
+      if (selectedCities.length > 0) {
+        data.routes = data.routes.filter(r => selectedCities.includes(r.destination));
+      }
+
+      // Sort by price
+      data.routes.sort((a, b) => a.cheapestPrice - b.cheapestPrice);
+
+      setResults(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -175,19 +229,77 @@ export default function Home() {
                     Optimize By
                   </label>
                   <div className="grid grid-cols-2 gap-2">
-                    <button className="px-4 py-2 rounded-lg bg-sky-100 dark:bg-sky-900 text-sky-700 dark:text-sky-300 font-medium text-sm border-2 border-sky-500">
+                    <button
+                      onClick={() => setOptimizeBy("price")}
+                      className={`px-4 py-2 rounded-lg font-medium text-sm border-2 transition-all ${
+                        optimizeBy === "price"
+                          ? "bg-sky-100 dark:bg-sky-900 text-sky-700 dark:text-sky-300 border-sky-500"
+                          : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-transparent hover:border-slate-300 dark:hover:border-slate-500"
+                      }`}
+                    >
                       Price
                     </button>
-                    <button className="px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-medium text-sm border-2 border-transparent hover:border-slate-300 dark:hover:border-slate-500">
+                    <button
+                      onClick={() => setOptimizeBy("duration")}
+                      className={`px-4 py-2 rounded-lg font-medium text-sm border-2 transition-all ${
+                        optimizeBy === "duration"
+                          ? "bg-sky-100 dark:bg-sky-900 text-sky-700 dark:text-sky-300 border-sky-500"
+                          : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-transparent hover:border-slate-300 dark:hover:border-slate-500"
+                      }`}
+                    >
                       Duration
                     </button>
                   </div>
                 </div>
 
-                <button className="w-full bg-sky-600 hover:bg-sky-700 text-white py-4 rounded-lg font-medium text-lg transition-colors flex items-center justify-center gap-2">
-                  <SearchIcon className="w-5 h-5" />
-                  Find Best Route
+                {/* Error Message */}
+                {error && (
+                  <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm">
+                    {error}
+                  </div>
+                )}
+
+                <button
+                  onClick={handleSearch}
+                  disabled={loading}
+                  className="w-full bg-sky-600 hover:bg-sky-700 disabled:bg-sky-400 text-white py-4 rounded-lg font-medium text-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <>
+                      <SpinnerIcon className="w-5 h-5 animate-spin" />
+                      Searching...
+                    </>
+                  ) : (
+                    <>
+                      <SearchIcon className="w-5 h-5" />
+                      Find Best Route
+                    </>
+                  )}
                 </button>
+
+                {/* Results */}
+                {results && (
+                  <div className="mt-6 p-4 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <h3 className="font-semibold text-slate-900 dark:text-white mb-3">
+                      Routes from {results.from}
+                    </h3>
+                    {results.routes.length === 0 ? (
+                      <p className="text-slate-500 dark:text-slate-400 text-sm">No routes found for selected destinations</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {results.routes.map((route, i) => (
+                          <div key={i} className="flex justify-between items-center p-3 bg-white dark:bg-slate-800 rounded-lg">
+                            <div>
+                              <span className="font-medium text-slate-900 dark:text-white">{route.destination}</span>
+                              <span className="text-slate-500 dark:text-slate-400 text-sm ml-2">{route.destinationName}</span>
+                            </div>
+                            <span className="font-semibold text-sky-600 dark:text-sky-400">${route.cheapestPrice}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -199,8 +311,8 @@ export default function Home() {
         <div className="max-w-6xl mx-auto">
           <div className="grid grid-cols-3 gap-8 text-center">
             <div>
-              <div className="text-4xl font-bold text-sky-600 dark:text-sky-400">10</div>
-              <div className="text-slate-600 dark:text-slate-400 mt-1">US Airports</div>
+              <div className="text-4xl font-bold text-sky-600 dark:text-sky-400">100</div>
+              <div className="text-slate-600 dark:text-slate-400 mt-1">Global Airports</div>
             </div>
             <div>
               <div className="text-4xl font-bold text-sky-600 dark:text-sky-400">5</div>
@@ -283,6 +395,14 @@ function SearchIcon({ className }: { className?: string }) {
   );
 }
 
+function SpinnerIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+    </svg>
+  );
+}
+
 function CheckIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -308,4 +428,3 @@ function ClockIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
