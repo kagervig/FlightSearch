@@ -29,24 +29,14 @@ import com.kristian.flightsearch.models.Flight;
 public class FlightReader {
 
     /**
-     * Reads flights from file using the default airport file (top100global.txt)
-     */
-    public static HashMap<String, Flight> readFlights(String filePath) {
-        return readFlights(filePath, "top100global.txt");
-    }
-
-    /**
      * Reads flights from a CSV file and returns them as a HashMap
      *
-     * @param filePath    Path to the flights file (e.g., "flights.txt")
-     * @param airportFile Path to the airport file (needed to look up Airport objects)
+     * @param filePath Path to the flights file (e.g., "flights.txt")
+     * @param airports Array of airports (needed to look up Airport objects by code)
      * @return HashMap where key = flight number, value = Flight object
      */
-    public static HashMap<String, Flight> readFlights(String filePath, String airportFile) {
+    public static HashMap<String, Flight> readFlights(String filePath, Airport[] airports) {
         HashMap<String, Flight> flightList = new HashMap<>();
-
-        // Load airports first - we need Airport objects to create Flight objects
-        Airport[] airports = getAirports(airportFile);
 
         try {
             // Get a reader (tries classpath first for JAR, then filesystem for local dev)
@@ -135,12 +125,4 @@ public class FlightReader {
         return null;
     }
 
-    /**
-     * Helper method to load airports using FileReader
-     */
-    private static Airport[] getAirports(String filePath) {
-        FileReader fr = new FileReader(filePath);
-        Airport[] airports = fr.getAirports();
-        return airports;
-    }
 }

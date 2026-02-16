@@ -28,7 +28,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import com.kristian.flightsearch.datagenerator.FileReader;
+import com.kristian.flightsearch.datagenerator.FSFileReader;
 import com.kristian.flightsearch.datagenerator.FlightGenerator;
 import com.kristian.flightsearch.datagenerator.FlightReader;
 import com.kristian.flightsearch.flightgraph.AirportVertex;
@@ -42,7 +42,7 @@ public class Server {
     // Static variables hold the data - initialized once at startup, reused for all requests
     // This is efficient because we don't reload data for every request
     private static FlightGraph flightNetwork;      // Graph structure: airports connected by flights
-    private static FileReader fileReader;          // Provides airport lookup by code
+    private static FSFileReader fileReader;          // Provides airport lookup by code
     private static HashMap<String, Flight> flightList;  // All flights indexed by flight number
     private static HashMap<String, ArrayList<Flight>> flightIndex;  // Flights indexed by route (e.g., "JFK-LAX")
 
@@ -108,7 +108,7 @@ public class Server {
         ArrayList<AirportVertex> airportVertices = new ArrayList<>();
 
         // Load airports from file and add them as vertices in the graph
-        fileReader = new FileReader("top100global.txt");
+        fileReader = new FSFileReader("top100global.txt");
         Airport[] airports = fileReader.getAirports();
 
         for (Airport a : airports) {
@@ -116,7 +116,7 @@ public class Server {
         }
 
         // Load flights from file
-        flightList = FlightReader.readFlights(filepath);
+        flightList = FlightReader.readFlights(filepath, airports);
 
         // Create an index of flights by route (e.g., "JFK-LAX" -> [flight1, flight2, ...])
         // This makes searching for flights between two airports O(1) instead of O(n)
@@ -164,6 +164,8 @@ public class Server {
             airportData.put("longitude", airport.getLon());
             airportData.put("timezone", airport.getTimeZone());
             airportData.put("runway length", airport.getRunwayLength());
+            airportData.put("city", airport.getCity());
+            airportData.put("country", airport.getCountry());
             result.add(airportData);
         }
 

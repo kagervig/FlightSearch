@@ -4,7 +4,7 @@ import java.util.*;
 import java.time.Duration;
 
 import com.kristian.flightsearch.utils.FlightPrinter;
-import com.kristian.flightsearch.datagenerator.FileReader;
+import com.kristian.flightsearch.datagenerator.FSFileReader;
 import com.kristian.flightsearch.datagenerator.FlightGenerator;
 import com.kristian.flightsearch.datagenerator.FlightReader;
 import com.kristian.flightsearch.datagenerator.FlightWriter;
@@ -24,14 +24,14 @@ public class Main {
         ArrayList<AirportVertex> airportVertices = new ArrayList<AirportVertex>(); // declare arraylist of
                                                                                    // airportvertices
 
-        FileReader fileReader = new FileReader("top100global.txt");
+        FSFileReader fileReader = new FSFileReader("top100global.txt");
         Airport[] airports = fileReader.getAirports();
         for (Airport a : airports) {
             airportVertices.add(flightNetwork.addVertex(a));
         }
 
         //FlightWriter.writeFlights(filepath, 15000, "top100global.txt"); // optional: generate and write flights to file
-        flightList = FlightReader.readFlights(filepath);
+        flightList = FlightReader.readFlights(filepath, airports);
 
         HashMap<String, ArrayList<Flight>> flightIndex = FlightGenerator.flightMapper(flightList);
 
@@ -53,7 +53,7 @@ public class Main {
     }
 
     public static void menu(HashMap<String, ArrayList<Flight>> flightIndex, HashMap<String, Flight> flightList,
-            FlightGraph flightNetwork, FileReader fileReader) {
+            FlightGraph flightNetwork, FSFileReader fileReader) {
         Scanner scanner = new Scanner(System.in);
         String choice = "";
 
@@ -139,7 +139,7 @@ public class Main {
         scanner.close();
     }
 
-    private static String getValidAirportCode(Scanner scanner, FileReader fileReader, String prompt) {
+    private static String getValidAirportCode(Scanner scanner, FSFileReader fileReader, String prompt) {
         while (true) {
             System.out.print(prompt);
             System.out.flush();
@@ -158,7 +158,7 @@ public class Main {
     }
 
     public static Airport[] getAirports(String filePath) {
-        FileReader fr = new FileReader(filePath);
+        FSFileReader fr = new FSFileReader(filePath);
         return fr.getAirports();
     }
 

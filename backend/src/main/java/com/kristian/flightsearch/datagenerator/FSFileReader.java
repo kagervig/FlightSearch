@@ -1,15 +1,15 @@
 package com.kristian.flightsearch.datagenerator;
 
 /*
- * FileReader.java - Loads airport data from a text file
+ * FSFileReader.java - Loads airport data from a text file
  *
  * This class reads airport information from a CSV-formatted text file and provides
  * methods to look up airports by their code.
  *
  * File format (top100global.txt):
- *   CODE,Name,Latitude,Longitude,Timezone,RunwayLength
- *   JFK,John F. Kennedy International Airport,40.6413,-73.7781,America/New_York,4423
- *   LAX,Los Angeles International Airport,33.9416,-118.4085,America/Los_Angeles,3939
+ *   CODE,Name,Latitude,Longitude,Timezone,RunwayLength,City,Country
+ *   JFK,John F. Kennedy International Airport,40.6413,-73.7781,America/New_York,4423,New York,United States
+ *   LAX,Los Angeles International Airport,33.9416,-118.4085,America/Los_Angeles,3939,Los Angeles,United States
  *
  * Key features:
  *   - Reads from JAR classpath (for deployment) or filesystem (for local dev)
@@ -21,18 +21,19 @@ import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.utils.AirportPrinter;
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Scanner;
 
-public class FileReader {
-    private Airport[] airports;           // Array of all airports (for iteration)
-    private HashMap<String, Airport> airportMap;  // Map for O(1) lookup by code
+public class FSFileReader {
+    private Airport[] airports; // Array of all airports (for iteration)
+    private HashMap<String, Airport> airportMap; // Map for O(1) lookup by code
 
-    public FileReader(String filePath) {
+    public FSFileReader(String filePath) {
         readAirportsFromFile(filePath);
+        System.out.println("FSFileReader: Loaded " + airports.length + " airports from " + filePath);
     }
 
     private void readAirportsFromFile(String filePath) {
@@ -51,22 +52,25 @@ public class FileReader {
             String line;
             while ((line = reader.readLine()) != null) {
                 line = line.trim();
-                if (line.isEmpty()) continue;
+                if (line.isEmpty())
+                    continue;
 
-                // Parse CSV: CODE,Name,Lat,Lon,Timezone,RunwayLength
+                // Parse CSV: CODE,Name,Lat,Lon,Timezone,RunwayLength,City,Country
                 String[] airportData = line.split(",");
 
-                if (airportData.length >= 6) {
+                if (airportData.length >= 8) {
                     String code = airportData[0];
                     String name = airportData[1];
                     double lat = Double.parseDouble(airportData[2]);
                     double lon = Double.parseDouble(airportData[3]);
                     String timeZone = airportData[4];
                     int runwayLength = Integer.parseInt(airportData[5]);
+                    String city = airportData[6];
+                    String country = airportData[7];
 
-                    Airport airport = new Airport(code, name, lat, lon, timeZone, runwayLength);
+                    Airport airport = new Airport(code, name, lat, lon, timeZone, runwayLength, city, country);
                     airportList.add(airport);
-                    airportMap.put(code, airport);  // Index by code for fast lookup
+                    airportMap.put(code, airport); // Index by code for fast lookup
                 }
             }
 
@@ -81,13 +85,14 @@ public class FileReader {
     }
 
     /**
-     * Gets a reader for the file - tries classpath first (for JAR), then filesystem (for local dev)
+     * Gets a reader for the file - tries classpath first (for JAR), then filesystem
+     * (for local dev)
      *
      * Why two approaches?
      * - When deployed to Railway, files are bundled INSIDE the JAR file
-     *   We access them using getResourceAsStream() which reads from the classpath
+     * We access them using getResourceAsStream() which reads from the classpath
      * - When developing locally, files exist on the filesystem
-     *   We use regular file reading
+     * We use regular file reading
      *
      * By trying classpath first, deployment works. By falling back to filesystem,
      * local development works too.
@@ -104,7 +109,7 @@ public class FileReader {
         File file = new File(filePath);
         if (file.exists()) {
             try {
-                return new BufferedReader(new java.io.FileReader(file));
+                return new BufferedReader(new FileReader(file));
             } catch (Exception e) {
                 return null;
             }
@@ -135,14 +140,13 @@ public class FileReader {
         return airportMap.containsKey(code.toUpperCase());
     }
 
-
     public static void main(String[] args) {
-        FileReader fr = new FileReader("top10usa.txt");
+        FSFileReader fr = new FSFileReader("top10usa.txt");
 
         Airport[] airports = fr.getAirports();
         AirportPrinter ap = new AirportPrinter();
 
-        for (Airport airport : airports){
+        for (Airport airport : airports) {
             ap.print(airport);
         }
     }

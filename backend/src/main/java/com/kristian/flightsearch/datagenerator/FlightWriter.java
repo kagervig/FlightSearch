@@ -127,7 +127,7 @@ public class FlightWriter {
     }
     
     public static Airport[] getAirports(String filePath) {
-        FileReader fr = new FileReader(filePath);
+        FSFileReader fr = new FSFileReader(filePath);
         return fr.getAirports();
     }
 }

@@ -129,7 +129,7 @@ public class FlightGenerator {
                     fp.print(f);
                 }
             }
-            
+
             System.out.println("Enter an origin airport: ");
             origin = scnr.nextLine();
             if (origin == "0"){
@@ -189,6 +189,7 @@ public class FlightGenerator {
     
     // 4. Hard range limit (No commercial aircraft exceeds ~18,000km easily)
     if (flightDistanceKm > 18000) return false;
+    if (flightDistanceKm < 100) return false;
     
     // 5. Model the required runway based on distance
     // We assume a linear-to-exponential growth for runway need vs range
@@ -228,7 +229,7 @@ public class FlightGenerator {
     }
 
     public static Airport[] getAirports(String filePath){
-        FileReader fr = new FileReader(filePath);                       //read list of airports from file
+        FSFileReader fr = new FSFileReader(filePath);                       //read list of airports from file
         Airport[] airports = fr.getAirports();                          //populates list of airports
         return airports;
     }
