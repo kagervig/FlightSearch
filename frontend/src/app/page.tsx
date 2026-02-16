@@ -1,31 +1,59 @@
-"use client";
+/*
+ * page.tsx - FlightSearch Frontend
+ *
+ * This is the main page of the FlightSearch app. It provides a form for users to:
+ *   1. Enter their home city (airport code like JFK, LAX)
+ *   2. Select how many cities they want to visit (1-5)
+ *   3. Enter destination cities and days per city
+ *   4. Choose to optimize by price or duration
+ *
+ * When "Find Best Route" is clicked, it calls the backend API:
+ *   GET /api/routes/cheapest?from=JFK
+ *
+ * The backend runs Dijkstra's algorithm and returns the cheapest price
+ * to reach every airport from the origin.
+ *
+ * Key concepts:
+ *   - useState: React hook to store data that changes (form inputs, results)
+ *   - fetch: JavaScript function to make HTTP requests to the backend
+ *   - async/await: Way to handle asynchronous operations (API calls)
+ */
+
+"use client";  // This tells Next.js this component runs in the browser (client-side)
 
 import { useState } from "react";
 
+// API_URL comes from environment variable, with fallback for local development
+// In production (Vercel), this is set to your Railway backend URL
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
+// TypeScript interfaces define the shape of our data
+// This helps catch errors and provides autocomplete
 interface Route {
-  destination: string;
-  destinationName: string;
-  cheapestPrice: number;
+  destination: string;       // Airport code (e.g., "LAX")
+  destinationName: string;   // Full name (e.g., "Los Angeles International Airport")
+  cheapestPrice: number;     // Price in dollars
 }
 
 interface SearchResult {
-  from: string;
-  routes: Route[];
+  from: string;              // Origin airport code
+  routes: Route[];           // Array of destinations with prices
 }
 
 export default function Home() {
-  const [numCities, setNumCities] = useState(1);
-  const [homeCity, setHomeCity] = useState("");
-  const [startDate, setStartDate] = useState("");
+  // useState creates "state variables" - data that can change and triggers re-render
+  // Each useState returns [currentValue, setterFunction]
+
+  const [numCities, setNumCities] = useState(1);           // How many cities to visit
+  const [homeCity, setHomeCity] = useState("");             // Origin airport code
+  const [startDate, setStartDate] = useState("");           // Trip start date
   const [destinations, setDestinations] = useState<{ city: string; days: number }[]>([
-    { city: "", days: 3 },
+    { city: "", days: 3 },                                  // Array of destination cities
   ]);
-  const [optimizeBy, setOptimizeBy] = useState<"price" | "duration">("price");
-  const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<SearchResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [optimizeBy, setOptimizeBy] = useState<"price" | "duration">("price");  // Optimization mode
+  const [loading, setLoading] = useState(false);            // Is API call in progress?
+  const [results, setResults] = useState<SearchResult | null>(null);  // API response
+  const [error, setError] = useState<string | null>(null);  // Error message if any
 
   const handleNumCitiesChange = (num: number) => {
     setNumCities(num);
@@ -49,39 +77,59 @@ export default function Home() {
     setDestinations(newDestinations);
   };
 
+  /**
+   * handleSearch - Called when user clicks "Find Best Route"
+   *
+   * This function:
+   *   1. Validates that home city is entered
+   *   2. Calls the backend API with the origin airport
+   *   3. Filters results to only show selected destinations
+   *   4. Updates the UI with results or error
+   */
   const handleSearch = async () => {
+    // Validate input
     if (!homeCity) {
       setError("Please enter your home city");
       return;
     }
 
+    // Set loading state (shows spinner, disables button)
     setLoading(true);
     setError(null);
     setResults(null);
 
     try {
+      // Call the backend API
+      // fetch() makes an HTTP request and returns a Promise
+      // await pauses execution until the Promise resolves
       const response = await fetch(`${API_URL}/api/routes/cheapest?from=${homeCity.toUpperCase()}`);
 
+      // Check if request was successful (status 200-299)
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || "Failed to search routes");
       }
 
+      // Parse JSON response into JavaScript object
       const data: SearchResult = await response.json();
 
       // Filter results to only show destinations the user selected
+      // If no destinations entered, show all routes
       const selectedCities = destinations.map(d => d.city.toUpperCase()).filter(c => c);
       if (selectedCities.length > 0) {
         data.routes = data.routes.filter(r => selectedCities.includes(r.destination));
       }
 
-      // Sort by price
+      // Sort by price (cheapest first)
       data.routes.sort((a, b) => a.cheapestPrice - b.cheapestPrice);
 
+      // Update state with results (triggers re-render to show results)
       setResults(data);
     } catch (err) {
+      // Handle any errors (network issues, invalid response, etc.)
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
+      // Always runs, whether success or error
       setLoading(false);
     }
   };
