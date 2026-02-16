@@ -4,6 +4,7 @@
 # Backend (Java)
 backend/out/
 backend/target/
+backend/dependency-reduced-pom.xml
 *.class
 *.jar
 
