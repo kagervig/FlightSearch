@@ -3,6 +3,54 @@ This app will be a tool to search for the best route between multiple cities. Th
 
 Written with Java
 
+## Development
+
+### Running the Backend Locally
+
+```bash
+cd backend
+mvn compile exec:java
+```
+
+The server runs on http://localhost:8080
+
+### Running with Debugger
+
+```bash
+cd backend
+mvn compile exec:exec -Pdebug
+```
+
+This starts the server with a debug port on 5005. Then attach VS Code:
+1. Open Run & Debug (Cmd+Shift+D)
+2. Select "Attach to Debug Server"
+3. Press F5
+
+### Running Tests
+
+```bash
+cd backend
+mvn test
+```
+
+### Building for Deployment
+
+```bash
+cd backend
+mvn clean package -DskipTests
+```
+
+Creates a fat JAR at `target/flightsearch-1.0-SNAPSHOT.jar`
+
+### API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /health` | Health check |
+| `GET /api/airports` | List all airports |
+| `GET /api/flights/search?from=JFK&to=LAX` | Search direct flights |
+| `GET /api/routes/cheapest?from=JFK` | Find cheapest routes using Dijkstra |
+
 # Models
 
 ### Airport

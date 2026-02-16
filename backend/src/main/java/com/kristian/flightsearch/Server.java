@@ -163,6 +163,7 @@ public class Server {
             airportData.put("latitude", airport.getLat());
             airportData.put("longitude", airport.getLon());
             airportData.put("timezone", airport.getTimeZone());
+            airportData.put("runway length", airport.getRunwayLength());
             result.add(airportData);
         }
 
