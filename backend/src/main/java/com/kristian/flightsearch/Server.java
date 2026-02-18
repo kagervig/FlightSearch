@@ -36,6 +36,8 @@ import com.kristian.flightsearch.flightgraph.Dijkstra;
 import com.kristian.flightsearch.flightgraph.FlightGraph;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
+import com.kristian.flightsearch.models.Route;
+import com.kristian.flightsearch.multicitysearch.MultiCitySearch;
 
 public class Server {
 
@@ -81,6 +83,10 @@ public class Server {
         // Returns cheapest price to reach every other airport from the origin
         app.get("/api/routes/cheapest", Server::findCheapestRoutes);
 
+        // Multi-city search: permute destinations and find valid routes with flights per leg
+        // Example: /api/flights/multicity?from=YYZ&destinations=JFK,LAX,FCO
+        app.get("/api/flights/multicity", Server::searchMultiCity);
+
         // Step 5: Start the server
         app.start(port);
         System.out.println("Server started on port " + port);
@@ -89,6 +95,7 @@ public class Server {
         System.out.println("  GET /api/airports");
         System.out.println("  GET /api/flights/search?from=XXX&to=YYY");
         System.out.println("  GET /api/routes/cheapest?from=XXX");
+        System.out.println("  GET /api/flights/multicity?from=XXX&destinations=YYY,ZZZ");
     }
 
     /**
@@ -318,5 +325,81 @@ public class Server {
             "from", from,
             "routes", routes
         ));
+    }
+
+    /**
+     * GET /api/flights/multicity?from=YYZ&destinations=JFK,LAX,FCO
+     * Permutes destination order, finds all valid routes, and returns flights per leg.
+     */
+    private static void searchMultiCity(Context ctx) {
+        String from = ctx.queryParam("from");
+        String destinationsParam = ctx.queryParam("destinations");
+
+        if (from == null || destinationsParam == null) {
+            ctx.status(400).json(Map.of("error", "Missing 'from' or 'destinations' parameter"));
+            return;
+        }
+
+        from = from.trim().toUpperCase();
+        String[] destinations = destinationsParam.split(",");
+        for (int i = 0; i < destinations.length; i++) {
+            destinations[i] = destinations[i].trim().toUpperCase();
+        }
+
+        if (destinations.length < 1 || destinations.length > 5) {
+            ctx.status(400).json(Map.of("error", "Must have between 1 and 5 destinations"));
+            return;
+        }
+
+        ArrayList<Route> validRoutes = MultiCitySearch.search(from, destinations);
+
+        if (validRoutes.isEmpty()) {
+            ctx.json(Map.of("from", from, "routes", new ArrayList<>()));
+            return;
+        }
+
+        List<Map<String, Object>> routeData = new ArrayList<>();
+        for (Route route : validRoutes) {
+            Map<String, Object> routeMap = new HashMap<>();
+            routeMap.put("airports", route.getAirports());
+            routeMap.put("cheapestTotalPrice", route.getCheapestTotalPrice());
+
+            List<Map<String, Object>> legs = new ArrayList<>();
+            String[] airports = route.getAirports();
+            ArrayList<ArrayList<Flight>> allFlights = route.getFlights();
+
+            for (int i = 0; i < allFlights.size(); i++) {
+                Map<String, Object> leg = new HashMap<>();
+                leg.put("from", airports[i]);
+                leg.put("to", airports[i + 1]);
+
+                ArrayList<Flight> legFlights = allFlights.get(i);
+                // find cheapest price for this leg
+                int cheapestPrice = Integer.MAX_VALUE;
+                for (Flight f : legFlights) {
+                    if (f.getPrice() < cheapestPrice) {
+                        cheapestPrice = f.getPrice();
+                    }
+                }
+
+                List<Map<String, Object>> flightData = new ArrayList<>();
+                for (Flight f : legFlights) {
+                    Map<String, Object> fd = new HashMap<>();
+                    fd.put("flightNumber", f.getFlightNumber());
+                    fd.put("price", f.getPrice());
+                    fd.put("departureTime", f.getDepartureTime().toString());
+                    fd.put("arrivalTime", f.getArrivalTime().toString());
+                    fd.put("durationMinutes", f.getDuration().toMinutes());
+                    fd.put("cheapest", f.getPrice() == cheapestPrice);
+                    flightData.add(fd);
+                }
+                leg.put("flights", flightData);
+                legs.add(leg);
+            }
+            routeMap.put("legs", legs);
+            routeData.add(routeMap);
+        }
+
+        ctx.json(Map.of("from", from, "routes", routeData));
     }
 }

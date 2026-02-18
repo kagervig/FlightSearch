@@ -3,6 +3,7 @@ package com.kristian.flightsearch.datagenerator;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
 import com.kristian.flightsearch.utils.FlightPrinter;
+import com.kristian.flightsearch.utils.AirportPrinter;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -14,27 +15,27 @@ public class FlightGenerator {
 
     public static void main(String[] args) {
         findMaxFlightLength();
-        /* 
-        String filePath = "top10usa.txt";
+        
+        String filePath = "top100global.txt";
         Airport[] airports = getAirports(filePath);         //populates list of airports
         AirportPrinter ap = new AirportPrinter();           //instantiate a new airport printer
         FlightPrinter fp = new FlightPrinter();                
         
         //populate hashmap with flights
-        HashMap<String, Flight> flightList = generateFlights(1000, airports);
+        HashMap<String, Flight> flightList = generateFlights(5000, airports);
         HashMap<String, ArrayList<Flight>> flightIndex = flightMapper(flightList);
 
         ArrayList<Flight> temp = new ArrayList<>();
         temp = flightIndex.get("DFWMCO");               //search for flights from JFK to SEA
 
-        for (Flight f: temp){
-            fp.print(f);
-        }
+        // for (Flight f: temp){
+        //     fp.print(f);
+        // }
 
         routeCounter(flightIndex);
-        flightNumSearch(flightList);
+        //flightNumSearch(flightList);
         flightRouteSearch(flightIndex);
-        */
+        
 
     }
 
@@ -42,11 +43,11 @@ public class FlightGenerator {
     public static void routeCounter(HashMap<String, ArrayList<Flight>> flightIndex){
         HashMap<String, Integer> routeCounter = new HashMap();
         System.out.println("There are " + flightIndex.size() + " total routes");
-        for (String route : flightIndex.keySet()){
-            System.out.println(route + " has " + flightIndex.get(route).size() + " daily flights");
-            //System.out.println(route);
+        // for (String route : flightIndex.keySet()){
+        //     System.out.println(route + " has " + flightIndex.get(route).size() + " daily flights");
+        //     //System.out.println(route);
             
-        }
+        // }
 
     }
 
@@ -104,11 +105,15 @@ public class FlightGenerator {
         
 
     }
+    public static ArrayList<Flight> flightRouteSearch(HashMap<String, ArrayList<Flight>> flightIndex, String origin, String destination){
+        ArrayList<Flight> temp = flightIndex.get(origin + destination);
+        return temp;
+    }
 
     public static void flightRouteSearch(HashMap<String, ArrayList<Flight>> flightIndex){
         FlightPrinter fp = new FlightPrinter();
         Scanner scnr = new Scanner(System.in);
-        System.out.println("or 0 to quit");
+        System.out.println("(0 to quit)");
         System.out.println("Enter an origin airport: ");
         String origin = scnr.nextLine();
         if (origin.equals("0")){
@@ -224,7 +229,7 @@ public class FlightGenerator {
             }
         }
         System.out.println("Longest route is: " + longestRoute);
-        System.out.printf("Total Distance: %.0f", maxFlightDistance);
+        System.out.printf("Total Distance: %.0f\n", maxFlightDistance);
         
     }
 
