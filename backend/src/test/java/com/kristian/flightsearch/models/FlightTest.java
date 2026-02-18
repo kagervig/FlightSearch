@@ -9,6 +9,7 @@ import com.kristian.flightsearch.datagenerator.FlightDurationCalculator;
 
 import java.time.Duration;
 import java.time.LocalTime;
+import java.util.Set;
 
 @DisplayName("Flight Class Tests")
 class FlightTest {
@@ -193,17 +194,10 @@ class FlightTest {
         assertTrue(flightNumber.matches("[A-Z0-9]{2} \\d{4}"),
             "Flight number should match format 'XX ####', but got: " + flightNumber);
         
-        // Check if airline code is from the valid list
+        // Check that airline code is a 2-character alphanumeric string
         String airlineCode = flightNumber.substring(0, 2);
-        String[] validCodes = {"AA","UA","DL","WN","B6","AS","NK","F9","G4","SY"};
-        boolean validAirline = false;
-        for (String code : validCodes) {
-            if (code.equals(airlineCode)) {
-                validAirline = true;
-                break;
-            }
-        }
-        assertTrue(validAirline, "Airline code should be from the valid list");
+        assertTrue(airlineCode.matches("[A-Z0-9]{2}"),
+            "Airline code should be 2 alphanumeric characters, but got: " + airlineCode);
     }
     
     @Test
@@ -248,26 +242,23 @@ class FlightTest {
     }
     
     @Test
-    @DisplayName("flightPricer should include base price and modifier")
+    @DisplayName("flightPricer should produce price at or above the $50 floor")
     void testFlightPricerComponents() {
-        Flight flight = new Flight(jfk, lax, 2475.0, departureTime);
-        int distance = 1000;
-        int price = flight.flightPricer(distance);
-        
-        // Minimum price should be at least base (distance/10) + minimum modifier (50)
-        int minimumExpected = (distance / 10) + 50;
-        assertTrue(price >= minimumExpected, 
-            "Price should be at least base + minimum modifier");
+        Flight flight = new Flight(jfk, lax, 2475.0, departureTime, "AA 1234");
+        for (int i = 0; i < 100; i++) {
+            int price = flight.flightPricer(1000);
+            assertTrue(price >= 50, "Price should never fall below $50 floor, got: " + price);
+        }
     }
-    
+
     @Test
-    @DisplayName("flightPricer with zero distance should handle edge case")
+    @DisplayName("flightPricer with zero distance should return at least the $50 floor")
     void testFlightPricerZeroDistance() {
-        Flight flight = new Flight(jfk, lax, 2475.0, departureTime);
-        int price = flight.flightPricer(0);
-        
-        // Even with 0 distance, should have the random modifier (50-250)
-        assertTrue(price >= 50, "Price should be at least the minimum modifier");
+        Flight flight = new Flight(jfk, lax, 2475.0, departureTime, "AA 1234");
+        for (int i = 0; i < 100; i++) {
+            int price = flight.flightPricer(0);
+            assertTrue(price >= 50, "Price should be at least $50, got: " + price);
+        }
     }
     
     @Test
@@ -300,10 +291,99 @@ class FlightTest {
     void testVeryLongDistance() {
         double longDistance = 10000.0;
         Flight flight = new Flight(jfk, lax, longDistance, departureTime);
-        
+
         assertEquals(longDistance, flight.getDistance());
         assertNotNull(flight.getDuration());
         assertNotNull(flight.getPrice());
         assertTrue(flight.getPrice() > 0);
+    }
+
+    @Test
+    @DisplayName("Red-eye flights should be cheaper on average than evening peak flights")
+    void testTimeOfDayFactor() {
+        int samples = 2000;
+        long redEyeTotal = 0;
+        long peakTotal = 0;
+
+        for (int i = 0; i < samples; i++) {
+            Flight redEye = new Flight(jfk, lax, 2475.0, LocalTime.of(3, 0), "AA 1234");
+            redEyeTotal += redEye.flightPricer(2475);
+
+            Flight peak = new Flight(jfk, lax, 2475.0, LocalTime.of(18, 0), "AA 1234");
+            peakTotal += peak.flightPricer(2475);
+        }
+
+        double redEyeAvg = redEyeTotal / (double) samples;
+        double peakAvg = peakTotal / (double) samples;
+        assertTrue(redEyeAvg < peakAvg,
+            "Red-eye average ($" + redEyeAvg + ") should be less than peak average ($" + peakAvg + ")");
+    }
+
+    @Test
+    @DisplayName("Budget carriers should be cheaper on average than legacy carriers")
+    void testBudgetCarrierDiscount() {
+        int samples = 2000;
+        long budgetTotal = 0;
+        long legacyTotal = 0;
+
+        for (int i = 0; i < samples; i++) {
+            Flight budget = new Flight(jfk, lax, 2475.0, departureTime, "FR 1234");
+            budgetTotal += budget.flightPricer(2475);
+
+            Flight legacy = new Flight(jfk, lax, 2475.0, departureTime, "BA 1234");
+            legacyTotal += legacy.flightPricer(2475);
+        }
+
+        double budgetAvg = budgetTotal / (double) samples;
+        double legacyAvg = legacyTotal / (double) samples;
+        assertTrue(budgetAvg < legacyAvg,
+            "Budget average ($" + budgetAvg + ") should be less than legacy average ($" + legacyAvg + ")");
+    }
+
+    @Test
+    @DisplayName("getTimeOfDayFactor should return correct factor for each time bracket")
+    void testGetTimeOfDayFactorBrackets() {
+        // Red-eye: 0.80
+        Flight redEye = new Flight(jfk, lax, 100, LocalTime.of(3, 0), "AA 1234");
+        assertEquals(0.80, redEye.getTimeOfDayFactor(), 0.001);
+
+        // Early morning: 0.90
+        Flight earlyMorning = new Flight(jfk, lax, 100, LocalTime.of(7, 0), "AA 1234");
+        assertEquals(0.90, earlyMorning.getTimeOfDayFactor(), 0.001);
+
+        // Mid-morning: 1.00
+        Flight midMorning = new Flight(jfk, lax, 100, LocalTime.of(10, 0), "AA 1234");
+        assertEquals(1.00, midMorning.getTimeOfDayFactor(), 0.001);
+
+        // Afternoon: 1.05
+        Flight afternoon = new Flight(jfk, lax, 100, LocalTime.of(14, 0), "AA 1234");
+        assertEquals(1.05, afternoon.getTimeOfDayFactor(), 0.001);
+
+        // Evening peak: 1.15
+        Flight evening = new Flight(jfk, lax, 100, LocalTime.of(19, 0), "AA 1234");
+        assertEquals(1.15, evening.getTimeOfDayFactor(), 0.001);
+
+        // Late night: 0.85
+        Flight lateNight = new Flight(jfk, lax, 100, LocalTime.of(22, 0), "AA 1234");
+        assertEquals(0.85, lateNight.getTimeOfDayFactor(), 0.001);
+    }
+
+    @Test
+    @DisplayName("getAirlineTypeFactor should distinguish budget from legacy carriers")
+    void testGetAirlineTypeFactor() {
+        Set<String> budgetCodes = Set.of("NK", "FR", "W6", "U2", "G4", "WN");
+        Set<String> legacyCodes = Set.of("AA", "BA", "LH", "SQ", "EK", "QF");
+
+        for (String code : budgetCodes) {
+            Flight flight = new Flight(jfk, lax, 100, departureTime, code + " 1234");
+            assertEquals(0.75, flight.getAirlineTypeFactor(), 0.001,
+                code + " should be identified as budget");
+        }
+
+        for (String code : legacyCodes) {
+            Flight flight = new Flight(jfk, lax, 100, departureTime, code + " 1234");
+            assertEquals(1.00, flight.getAirlineTypeFactor(), 0.001,
+                code + " should be identified as legacy");
+        }
     }
 }
