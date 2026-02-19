@@ -4,14 +4,13 @@
  * This is the main page of the FlightSearch app. It provides a form for users to:
  *   1. Enter their home city (airport code like JFK, LAX)
  *   2. Select how many cities they want to visit (1-5)
- *   3. Enter destination cities and days per city
+ *   3. Enter destination cities
  *   4. Choose to optimize by price or duration
  *
  * When "Find Best Route" is clicked, it calls the backend API:
- *   GET /api/routes/cheapest?from=JFK
+ *   GET /api/flights/multicity?from=JFK&destinations=LAX,ORD
  *
- * The backend runs Dijkstra's algorithm and returns the cheapest price
- * to reach every airport from the origin.
+ * The backend finds optimal multi-city routes and returns flight options per leg.
  *
  * Key concepts:
  *   - useState: React hook to store data that changes (form inputs, results)
@@ -29,15 +28,34 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 // TypeScript interfaces define the shape of our data
 // This helps catch errors and provides autocomplete
+interface FlightOption {
+  flightNumber: string;
+  price: number;
+  departureTime: string;
+  arrivalTime: string;
+  durationMinutes: number;
+  cheapest: boolean;
+}
+
+interface Leg {
+  from: string;
+  to: string;
+  fromCity: string;
+  fromCountry: string;
+  toCity: string;
+  toCountry: string;
+  flights: FlightOption[];
+}
+
 interface Route {
-  destination: string;       // Airport code (e.g., "LAX")
-  destinationName: string;   // Full name (e.g., "Los Angeles International Airport")
-  cheapestPrice: number;     // Price in dollars
+  airports: string[];
+  cheapestTotalPrice: number;
+  legs: Leg[];
 }
 
 interface SearchResult {
-  from: string;              // Origin airport code
-  routes: Route[];           // Array of destinations with prices
+  from: string;
+  routes: Route[];
 }
 
 export default function Home() {
@@ -46,9 +64,8 @@ export default function Home() {
 
   const [numCities, setNumCities] = useState(1);           // How many cities to visit
   const [homeCity, setHomeCity] = useState("");             // Origin airport code
-  const [startDate, setStartDate] = useState("");           // Trip start date
-  const [destinations, setDestinations] = useState<{ city: string; days: number }[]>([
-    { city: "", days: 3 },                                  // Array of destination cities
+  const [destinations, setDestinations] = useState<string[]>([
+    "",                                                      // Array of destination airport codes
   ]);
   const [optimizeBy, setOptimizeBy] = useState<"price" | "duration">("price");  // Optimization mode
   const [loading, setLoading] = useState(false);            // Is API call in progress?
@@ -59,7 +76,7 @@ export default function Home() {
     setNumCities(num);
     const newDestinations = [...destinations];
     while (newDestinations.length < num) {
-      newDestinations.push({ city: "", days: 3 });
+      newDestinations.push("");
     }
     while (newDestinations.length > num) {
       newDestinations.pop();
@@ -67,69 +84,69 @@ export default function Home() {
     setDestinations(newDestinations);
   };
 
-  const updateDestination = (index: number, field: "city" | "days", value: string | number) => {
+  const updateDestination = (index: number, value: string) => {
     const newDestinations = [...destinations];
-    if (field === "city") {
-      newDestinations[index].city = value as string;
-    } else {
-      newDestinations[index].days = value as number;
-    }
+    newDestinations[index] = value;
     setDestinations(newDestinations);
+  };
+
+  const formatDuration = (minutes: number) => {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  };
+
+  // tracks which legs have their alternative flights expanded
+  const [expandedLegs, setExpandedLegs] = useState<Record<string, boolean>>({});
+  // tracks whether the "other routes" section is visible
+  const [showOtherRoutes, setShowOtherRoutes] = useState(false);
+
+  const toggleLeg = (key: string) => {
+    setExpandedLegs(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
   /**
    * handleSearch - Called when user clicks "Find Best Route"
    *
    * This function:
-   *   1. Validates that home city is entered
-   *   2. Calls the backend API with the origin airport
-   *   3. Filters results to only show selected destinations
-   *   4. Updates the UI with results or error
+   *   1. Validates that home city and at least one destination are entered
+   *   2. Calls the multi-city backend API
+   *   3. Updates the UI with results or error
    */
   const handleSearch = async () => {
-    // Validate input
     if (!homeCity) {
       setError("Please enter your home city");
       return;
     }
 
-    // Set loading state (shows spinner, disables button)
+    const selectedCities = destinations.map(d => d.toUpperCase()).filter(c => c);
+    if (selectedCities.length === 0) {
+      setError("Please enter at least one destination");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setResults(null);
+    setExpandedLegs({});
+    setShowOtherRoutes(false);
 
     try {
-      // Call the backend API
-      // fetch() makes an HTTP request and returns a Promise
-      // await pauses execution until the Promise resolves
-      const response = await fetch(`${API_URL}/api/routes/cheapest?from=${homeCity.toUpperCase()}`);
+      const destinationsParam = selectedCities.join(",");
+      const response = await fetch(
+        `${API_URL}/api/flights/multicity?from=${homeCity.toUpperCase()}&destinations=${destinationsParam}`
+      );
 
-      // Check if request was successful (status 200-299)
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || "Failed to search routes");
       }
 
-      // Parse JSON response into JavaScript object
       const data: SearchResult = await response.json();
-
-      // Filter results to only show destinations the user selected
-      // If no destinations entered, show all routes
-      const selectedCities = destinations.map(d => d.city.toUpperCase()).filter(c => c);
-      if (selectedCities.length > 0) {
-        data.routes = data.routes.filter(r => selectedCities.includes(r.destination));
-      }
-
-      // Sort by price (cheapest first)
-      data.routes.sort((a, b) => a.cheapestPrice - b.cheapestPrice);
-
-      // Update state with results (triggers re-render to show results)
       setResults(data);
     } catch (err) {
-      // Handle any errors (network issues, invalid response, etc.)
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
-      // Always runs, whether success or error
       setLoading(false);
     }
   };
@@ -170,7 +187,7 @@ export default function Home() {
               <div className="space-y-4 text-slate-600 dark:text-slate-400">
                 <div className="flex items-center gap-3">
                   <CheckIcon className="w-5 h-5 text-sky-600" />
-                  <span>Optimized routing with Dijkstra&apos;s algorithm</span>
+                  <span>Optimized multi-city routing</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <CheckIcon className="w-5 h-5 text-sky-600" />
@@ -178,7 +195,7 @@ export default function Home() {
                 </div>
                 <div className="flex items-center gap-3">
                   <CheckIcon className="w-5 h-5 text-sky-600" />
-                  <span>Flexible trip duration per city</span>
+                  <span>Visit up to 5 cities in one trip</span>
                 </div>
               </div>
             </div>
@@ -218,22 +235,9 @@ export default function Home() {
                   <input
                     type="text"
                     value={homeCity}
-                    onChange={(e) => setHomeCity(e.target.value)}
+                    onChange={(e) => setHomeCity(e.target.value.toUpperCase())}
                     placeholder="e.g. JFK, LAX, ORD"
                     className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-sky-500 focus:border-transparent outline-none"
-                  />
-                </div>
-
-                {/* Start Date */}
-                <div>
-                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">
-                    Start Date
-                  </label>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-sky-500 focus:border-transparent outline-none"
                   />
                 </div>
 
@@ -250,22 +254,11 @@ export default function Home() {
                         </div>
                         <input
                           type="text"
-                          value={dest.city}
-                          onChange={(e) => updateDestination(index, "city", e.target.value)}
+                          value={dest}
+                          onChange={(e) => updateDestination(index, e.target.value.toUpperCase())}
                           placeholder="City code (e.g. LAX)"
                           className="flex-1 px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-sky-500 focus:border-transparent outline-none"
                         />
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <input
-                            type="number"
-                            min="1"
-                            max="30"
-                            value={dest.days}
-                            onChange={(e) => updateDestination(index, "days", parseInt(e.target.value) || 1)}
-                            className="w-16 px-3 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white text-center focus:ring-2 focus:ring-sky-500 focus:border-transparent outline-none"
-                          />
-                          <span className="text-sm text-slate-500 dark:text-slate-400">days</span>
-                        </div>
                       </div>
                     ))}
                   </div>
@@ -327,24 +320,126 @@ export default function Home() {
 
                 {/* Results */}
                 {results && (
-                  <div className="mt-6 p-4 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
-                    <h3 className="font-semibold text-slate-900 dark:text-white mb-3">
-                      Routes from {results.from}
-                    </h3>
+                  <div className="mt-6 space-y-4">
                     {results.routes.length === 0 ? (
-                      <p className="text-slate-500 dark:text-slate-400 text-sm">No routes found for selected destinations</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {results.routes.map((route, i) => (
-                          <div key={i} className="flex justify-between items-center p-3 bg-white dark:bg-slate-800 rounded-lg">
-                            <div>
-                              <span className="font-medium text-slate-900 dark:text-white">{route.destination}</span>
-                              <span className="text-slate-500 dark:text-slate-400 text-sm ml-2">{route.destinationName}</span>
-                            </div>
-                            <span className="font-semibold text-sky-600 dark:text-sky-400">${route.cheapestPrice}</span>
-                          </div>
-                        ))}
+                      <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
+                        <p className="text-slate-500 dark:text-slate-400 text-sm">No valid routes found for these destinations</p>
                       </div>
+                    ) : (
+                      <>
+                        {/* Cheapest route */}
+                        <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
+                          <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-semibold text-slate-900 dark:text-white">
+                              Best Route
+                            </h3>
+                            <span className="text-lg font-bold text-sky-600 dark:text-sky-400">
+                              ${results.routes[0].cheapestTotalPrice}
+                            </span>
+                          </div>
+
+                          <div className="text-sm text-slate-500 dark:text-slate-400 mb-3">
+                            {results.routes[0].airports.join(" → ")}
+                          </div>
+
+                          <div className="space-y-2">
+                            {results.routes[0].legs.map((leg, legIndex) => {
+                              const cheapestFlight = leg.flights.find(f => f.cheapest) || leg.flights[0];
+                              const legKey = `0-${legIndex}`;
+                              const isExpanded = expandedLegs[legKey];
+
+                              return (
+                                <div key={legIndex} className="bg-white dark:bg-slate-800 rounded-lg p-3">
+                                  <button
+                                    onClick={() => toggleLeg(legKey)}
+                                    className="w-full flex justify-between items-center cursor-pointer"
+                                  >
+                                    <span className="font-medium text-slate-900 dark:text-white">
+                                      {leg.from} → {leg.to}
+                                    </span>
+                                    <span className="font-semibold text-sky-600 dark:text-sky-400">
+                                      ${cheapestFlight.price}
+                                    </span>
+                                  </button>
+
+                                  {isExpanded && (
+                                    <div className="mt-3 space-y-2">
+                                      {leg.flights.map((f, fi) => (
+                                        <div
+                                          key={fi}
+                                          className={`p-3 rounded-lg border ${
+                                            f.cheapest
+                                              ? "border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-900/30"
+                                              : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900"
+                                          }`}
+                                        >
+                                          <div className="flex justify-between items-center mb-1">
+                                            <span className="font-medium text-slate-900 dark:text-white text-sm">
+                                              {f.flightNumber}
+                                              {f.cheapest && (
+                                                <span className="ml-2 text-xs text-sky-600 dark:text-sky-400 font-semibold">
+                                                  Cheapest
+                                                </span>
+                                              )}
+                                            </span>
+                                            <span className="font-semibold text-slate-900 dark:text-white text-sm">
+                                              ${f.price}
+                                            </span>
+                                          </div>
+                                          <div className="text-xs text-slate-500 dark:text-slate-400 space-y-0.5">
+                                            <div>{f.departureTime} → {f.arrivalTime} · {formatDuration(f.durationMinutes)}</div>
+                                            <div>{leg.fromCity}, {leg.fromCountry} → {leg.toCity}, {leg.toCountry}</div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Other routes toggle */}
+                        {results.routes.length > 1 && (
+                          <div>
+                            <button
+                              onClick={() => setShowOtherRoutes(!showOtherRoutes)}
+                              className="w-full text-center text-sm text-sky-600 dark:text-sky-400 hover:underline py-2"
+                            >
+                              {showOtherRoutes ? "Hide" : "Show"} {results.routes.length - 1} other route{results.routes.length > 2 ? "s" : ""}
+                            </button>
+
+                            {showOtherRoutes && (
+                              <div className="space-y-3 mt-2">
+                                {results.routes.slice(1).map((route, routeIndex) => (
+                                  <div key={routeIndex} className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
+                                    <div className="flex justify-between items-center mb-1">
+                                      <span className="text-sm text-slate-600 dark:text-slate-400">
+                                        {route.airports.join(" → ")}
+                                      </span>
+                                      <span className="font-semibold text-slate-700 dark:text-slate-300">
+                                        ${route.cheapestTotalPrice}
+                                      </span>
+                                    </div>
+                                    <div className="space-y-1">
+                                      {route.legs.map((leg, legIndex) => {
+                                        const cheapestFlight = leg.flights.find(f => f.cheapest) || leg.flights[0];
+                                        return (
+                                          <div key={legIndex} className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
+                                            <span>{leg.from} → {leg.to}: {cheapestFlight.flightNumber}</span>
+                                            <span>${cheapestFlight.price}</span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
@@ -387,7 +482,7 @@ export default function Home() {
             <FeatureCard
               icon={<DollarIcon className="w-8 h-8" />}
               title="Cheapest Route"
-              description="Dijkstra's algorithm finds the lowest total cost path, even with layovers."
+              description="Finds the lowest total cost path across all your destinations."
             />
             <FeatureCard
               icon={<ClockIcon className="w-8 h-8" />}
@@ -406,7 +501,7 @@ export default function Home() {
             <span className="font-semibold text-slate-900 dark:text-white">FlightSearch</span>
           </div>
           <div className="text-slate-500 dark:text-slate-400 text-sm">
-            Built with graph algorithms
+            Built for multi-city travel
           </div>
         </div>
       </footer>

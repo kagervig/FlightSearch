@@ -374,6 +374,11 @@ public class Server {
                 leg.put("to", airports[i + 1]);
 
                 ArrayList<Flight> legFlights = allFlights.get(i);
+                Flight sampleFlight = legFlights.get(0);
+                leg.put("fromCity", sampleFlight.getOrigin().getCity());
+                leg.put("fromCountry", sampleFlight.getOrigin().getCountry());
+                leg.put("toCity", sampleFlight.getDestination().getCity());
+                leg.put("toCountry", sampleFlight.getDestination().getCountry());
                 // find cheapest price for this leg
                 int cheapestPrice = Integer.MAX_VALUE;
                 for (Flight f : legFlights) {
