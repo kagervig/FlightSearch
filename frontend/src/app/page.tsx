@@ -96,6 +96,9 @@ export default function Home() {
     return h > 0 ? `${h}h ${m}m` : `${m}m`;
   };
 
+  // Backend sends LocalTime as HH:MM:SS — strip seconds for display
+  const formatTime = (time: string) => time.slice(0, 5);
+
   // tracks which legs have their alternative flights expanded
   const [expandedLegs, setExpandedLegs] = useState<Record<string, boolean>>({});
   // tracks whether the "other routes" section is visible
@@ -387,8 +390,10 @@ export default function Home() {
                                             </span>
                                           </div>
                                           <div className="text-xs text-slate-500 dark:text-slate-400 space-y-0.5">
-                                            <div>{f.departureTime} → {f.arrivalTime} · {formatDuration(f.durationMinutes)}</div>
-                                            <div>{leg.fromCity}, {leg.fromCountry} → {leg.toCity}, {leg.toCountry}</div>
+                                            <div>{formatTime(f.departureTime)} → {formatTime(f.arrivalTime)} · {formatDuration(f.durationMinutes)}</div>
+                                            {leg.fromCity && leg.toCity && (
+                                              <div>{leg.fromCity}, {leg.fromCountry} → {leg.toCity}, {leg.toCountry}</div>
+                                            )}
                                           </div>
                                         </div>
                                       ))}
