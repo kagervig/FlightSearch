@@ -4,25 +4,23 @@ import java.time.Duration;
 
 public class FlightDurationCalculator {
 
-    private static final double AVERAGE_CRUISE_SPEED_KNOTS = 460.0;
+    private static final double AVERAGE_CRUISE_SPEED_KMH = 852.0;
 
     /**
-     * Calculate flight duration from distance in nautical miles.
+     * Calculate flight duration from distance in kilometres.
      *
-     * @param distanceNM Distance in nautical miles
-     * @return LocalTime representing duration (hours, minutes)
+     * @param distanceKm Distance in kilometres
+     * @return Duration representing flight time (hours, minutes)
      */
-    public static Duration calculateFlightDuration(double distanceNM) {
-        double avgSpeedKnots = AVERAGE_CRUISE_SPEED_KNOTS;
-        
+    public static Duration calculateFlightDuration(double distanceKm) {
         // Base flight time in hours
-        double baseTimeHours = distanceNM / avgSpeedKnots;
-        
+        double baseTimeHours = distanceKm / AVERAGE_CRUISE_SPEED_KMH;
+
         // Add overhead for taxi, takeoff, landing (in hours)
         double overhead;
-        if (distanceNM < 250) {
+        if (distanceKm < 463) {           // ~250 NM
             overhead = 0.5;  // 30 minutes for short flights
-        } else if (distanceNM < 1000) {
+        } else if (distanceKm < 1852) {   // ~1000 NM
             overhead = 0.4;  // 24 minutes for medium flights
         } else {
             overhead = 0.35; // 21 minutes for long flights
