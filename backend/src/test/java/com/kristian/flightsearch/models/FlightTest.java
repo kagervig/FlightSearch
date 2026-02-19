@@ -21,8 +21,8 @@ class FlightTest {
     @BeforeEach
     void setUp() {
         // Create test airports
-        jfk = new Airport("JFK", "John F. Kennedy International Airport", 40.6413, -73.7781, "America/New_York", 4423, "New York", "United States");
-        lax = new Airport("LAX", "Los Angeles International Airport", 33.9416, -118.4085, "America/Los_Angeles", 3939, "Los Angeles", "United States");
+        jfk = new Airport("JFK", "John F. Kennedy International Airport", 40.6413, -73.7781, 4423, 13, "New York", "United States");
+        lax = new Airport("LAX", "Los Angeles International Airport", 33.9416, -118.4085, 3939, 38, "Los Angeles", "United States");
         departureTime = LocalTime.of(10, 30);
     }
     
@@ -125,7 +125,7 @@ class FlightTest {
     @DisplayName("setOrigin should update the origin airport")
     void testSetOrigin() {
         Flight flight = new Flight(jfk, lax, 2475.0, departureTime);
-        Airport ord = new Airport("ORD", "O'Hare International Airport", 41.9742, -87.9073, "America/Chicago", 3962, "Chicago", "United States");
+        Airport ord = new Airport("ORD", "O'Hare International Airport", 41.9742, -87.9073, 3962, 204, "Chicago", "United States");
         flight.setOrigin(ord);
         assertEquals(ord, flight.getOrigin());
     }
@@ -134,7 +134,7 @@ class FlightTest {
     @DisplayName("setDestination should update the destination airport")
     void testSetDestination() {
         Flight flight = new Flight(jfk, lax, 2475.0, departureTime);
-        Airport sfo = new Airport("SFO", "San Francisco International Airport", 37.6213, -122.3790, "America/Los_Angeles", 3618, "San Francisco", "United States");
+        Airport sfo = new Airport("SFO", "San Francisco International Airport", 37.6213, -122.3790, 3618, 4, "San Francisco", "United States");
         flight.setDestination(sfo);
         assertEquals(sfo, flight.getDestination());
     }

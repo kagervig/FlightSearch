@@ -76,9 +76,9 @@ public class FlightGraph {
     public static void main(String[] args) {
         FlightGraph flightNetwork = new FlightGraph(true, true);
 
-        Airport JFK = new Airport("JFK", "John F. Kennedy International Airport", 40.6398, -73.7789, "America/New_York", 4423, "New York", "United States");
-        Airport ATL = new Airport("ATL", "Hartsfield-Jackson Atlanta International Airport", 33.6404, -84.4199, "America/New_York", 3962, "Atlanta", "United States");
-        Airport LAX = new Airport("LAX", "Los Angeles International Airport", 33.9428, -118.4100, "America/Los_Angeles", 3939, "Los Angeles", "United States");
+        Airport JFK = new Airport("JFK", "John F. Kennedy International Airport", 40.6398, -73.7789, 4423, 13, "New York", "United States");
+        Airport ATL = new Airport("ATL", "Hartsfield-Jackson Atlanta International Airport", 33.6404, -84.4199, 3962, 313, "Atlanta", "United States");
+        Airport LAX = new Airport("LAX", "Los Angeles International Airport", 33.9428, -118.4100, 3939, 38, "Los Angeles", "United States");
 
         AirportVertex jfkVertex = flightNetwork.addVertex(JFK);
         AirportVertex atlVertex = flightNetwork.addVertex(ATL);

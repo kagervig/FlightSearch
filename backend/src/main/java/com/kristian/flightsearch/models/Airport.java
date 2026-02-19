@@ -5,19 +5,19 @@ public class Airport {
     String code;
     double lat;
     double lon;
-    String timeZone;
     int runwayLength;
+    int elevation;
     String city;
     String country;
 
 
-    public Airport(String code, String name, double lat, double lon, String timeZone, int runwayLength, String city, String country){
+    public Airport(String code, String name, double lat, double lon, int runwayLength, int elevation, String city, String country){
         this.name = name;
         this.code = code;
         this.lat = lat;
         this.lon = lon;
-        this.timeZone = timeZone;
         this.runwayLength = runwayLength;
+        this.elevation = elevation;
         this.city = city;
         this.country = country;
     }
@@ -33,8 +33,8 @@ public class Airport {
     public double getLon(){
         return this.lon;
     }
-    public String getTimeZone(){
-        return this.timeZone;
+    public int getElevation(){
+        return this.elevation;
     }
     public int getRunwayLength(){
         return this.runwayLength;

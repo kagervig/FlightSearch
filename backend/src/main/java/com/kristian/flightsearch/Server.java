@@ -115,7 +115,7 @@ public class Server {
         ArrayList<AirportVertex> airportVertices = new ArrayList<>();
 
         // Load airports from file and add them as vertices in the graph
-        fileReader = new FSFileReader("top100global.txt");
+        fileReader = new FSFileReader("609airports.txt");
         Airport[] airports = fileReader.getAirports();
 
         for (Airport a : airports) {
@@ -169,7 +169,7 @@ public class Server {
             airportData.put("name", airport.getName());
             airportData.put("latitude", airport.getLat());
             airportData.put("longitude", airport.getLon());
-            airportData.put("timezone", airport.getTimeZone());
+            airportData.put("elevation", airport.getElevation());
             airportData.put("runway length", airport.getRunwayLength());
             airportData.put("city", airport.getCity());
             airportData.put("country", airport.getCountry());

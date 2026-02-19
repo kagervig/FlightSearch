@@ -64,9 +64,9 @@ public class Route {
     }
 
     public static void main(String[] args) {
-        Airport yyz = new Airport("YYZ", "Toronto Pearson", 43.67, -79.63, "America/Toronto", 11120, "Toronto", "Canada");
-        Airport jfk = new Airport("JFK", "John F Kennedy", 40.64, -73.78, "America/New_York", 14511, "New York", "USA");
-        Airport lax = new Airport("LAX", "Los Angeles Intl", 33.94, -118.41, "America/Los_Angeles", 12091, "Los Angeles", "USA");
+        Airport yyz = new Airport("YYZ", "Toronto Pearson", 43.67, -79.63, 11120, 173, "Toronto", "Canada");
+        Airport jfk = new Airport("JFK", "John F Kennedy", 40.64, -73.78, 14511, 13, "New York", "USA");
+        Airport lax = new Airport("LAX", "Los Angeles Intl", 33.94, -118.41, 12091, 38, "Los Angeles", "USA");
 
         String[] airports = {"YYZ", "JFK", "LAX", "YYZ"};
 

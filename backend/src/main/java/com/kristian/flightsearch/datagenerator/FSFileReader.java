@@ -6,10 +6,10 @@ package com.kristian.flightsearch.datagenerator;
  * This class reads airport information from a CSV-formatted text file and provides
  * methods to look up airports by their code.
  *
- * File format (top100global.txt):
- *   CODE,Name,Latitude,Longitude,Timezone,RunwayLength,City,Country
- *   JFK,John F. Kennedy International Airport,40.6413,-73.7781,America/New_York,4423,New York,United States
- *   LAX,Los Angeles International Airport,33.9416,-118.4085,America/Los_Angeles,3939,Los Angeles,United States
+ * File format (609airports.txt):
+ *   iata_code,name,latitude_deg,longitude_deg,runway_length,elevation,country,City
+ *   JFK,John F. Kennedy International Airport,40.6413,-73.7781,4423,13,United States,New York
+ *   LAX,Los Angeles International Airport,33.9416,-118.4085,3939,38,United States,Los Angeles
  *
  * Key features:
  *   - Reads from JAR classpath (for deployment) or filesystem (for local dev)
@@ -55,7 +55,7 @@ public class FSFileReader {
                 if (line.isEmpty())
                     continue;
 
-                // Parse CSV: CODE,Name,Lat,Lon,Timezone,RunwayLength,City,Country
+                // Parse CSV: code,name,lat,lon,runwayLength,elevation,country,city
                 String[] airportData = line.split(",");
 
                 if (airportData.length >= 8) {
@@ -63,12 +63,12 @@ public class FSFileReader {
                     String name = airportData[1];
                     double lat = Double.parseDouble(airportData[2]);
                     double lon = Double.parseDouble(airportData[3]);
-                    String timeZone = airportData[4];
-                    int runwayLength = Integer.parseInt(airportData[5]);
-                    String city = airportData[6];
-                    String country = airportData[7];
+                    int runwayLength = Integer.parseInt(airportData[4]);
+                    int elevation = Integer.parseInt(airportData[5]);
+                    String country = airportData[6];
+                    String city = airportData[7];
 
-                    Airport airport = new Airport(code, name, lat, lon, timeZone, runwayLength, city, country);
+                    Airport airport = new Airport(code, name, lat, lon, runwayLength, elevation, city, country);
                     airportList.add(airport);
                     airportMap.put(code, airport); // Index by code for fast lookup
                 }
@@ -141,7 +141,7 @@ public class FSFileReader {
     }
 
     public static void main(String[] args) {
-        FSFileReader fr = new FSFileReader("top10usa.txt");
+        FSFileReader fr = new FSFileReader("609airports.txt");
 
         Airport[] airports = fr.getAirports();
         AirportPrinter ap = new AirportPrinter();

@@ -16,13 +16,13 @@ public class FlightGenerator {
     public static void main(String[] args) {
         findMaxFlightLength();
         
-        String filePath = "top100global.txt";
+        String filePath = "609airports.txt";
         Airport[] airports = getAirports(filePath);         //populates list of airports
         AirportPrinter ap = new AirportPrinter();           //instantiate a new airport printer
         FlightPrinter fp = new FlightPrinter();                
         
         //populate hashmap with flights
-        HashMap<String, Flight> flightList = generateFlights(5000, airports);
+        HashMap<String, Flight> flightList = generateFlights(50000, airports);
         HashMap<String, ArrayList<Flight>> flightIndex = flightMapper(flightList);
 
         ArrayList<Flight> temp = new ArrayList<>();
@@ -215,7 +215,7 @@ public class FlightGenerator {
 }
 
     public static void findMaxFlightLength(){
-        Airport[] airports = getAirports("top100global.txt");
+        Airport[] airports = getAirports("609airports.txt");
         System.out.println("Total airports: " + airports.length);
         double maxFlightDistance = 0;
         String longestRoute = "No routes found";

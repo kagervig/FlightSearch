@@ -24,13 +24,13 @@ public class Main {
         ArrayList<AirportVertex> airportVertices = new ArrayList<AirportVertex>(); // declare arraylist of
                                                                                    // airportvertices
 
-        FSFileReader fileReader = new FSFileReader("top100global.txt");
+        FSFileReader fileReader = new FSFileReader("609airports.txt");
         Airport[] airports = fileReader.getAirports();
         for (Airport a : airports) {
             airportVertices.add(flightNetwork.addVertex(a));
         }
 
-        //FlightWriter.writeFlights(filepath, 15000, "top100global.txt"); // optional: generate and write flights to file
+        //FlightWriter.writeFlights(filepath, 15000, "609airports.txt"); // optional: generate and write flights to file
         flightList = FlightReader.readFlights(filepath, airports);
 
         HashMap<String, ArrayList<Flight>> flightIndex = FlightGenerator.flightMapper(flightList);

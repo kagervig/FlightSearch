@@ -60,6 +60,9 @@ The airport class holds the airport details:
 - double lat (latitude)
 - double lon (longitude)
 - String time zone
+- int runwayLength
+- String city
+- String country
 
 ### Flight
 The flight class holds:

@@ -12,7 +12,7 @@ import java.util.List;
 public class FlightWriter {
 
     public static void main(String[] args) {
-        writeMonthOfFlights("monthofflights.txt", 500, "top100global.txt");
+        writeMonthOfFlights("monthofflights.txt", 500, "609airports.txt");
     }
     
     public static void writeFlights(String outputFilePath, int quantity, String airportFile) {
