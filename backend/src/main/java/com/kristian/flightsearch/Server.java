@@ -19,10 +19,6 @@ package com.kristian.flightsearch;
  *   3. Listens for HTTP requests and responds with JSON data
  */
 
-import io.javalin.Javalin;
-import io.javalin.http.Context;
-import io.javalin.json.JavalinJackson;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -39,14 +35,18 @@ import com.kristian.flightsearch.models.Flight;
 import com.kristian.flightsearch.models.Route;
 import com.kristian.flightsearch.multicitysearch.MultiCitySearch;
 
+import io.javalin.Javalin;
+import io.javalin.http.Context;
+
 public class Server {
 
-    // Static variables hold the data - initialized once at startup, reused for all requests
+    // Static variables hold the data - initialized once at startup, reused for all
+    // requests
     // This is efficient because we don't reload data for every request
-    private static FlightGraph flightNetwork;      // Graph structure: airports connected by flights
-    private static FSFileReader fileReader;          // Provides airport lookup by code
-    private static HashMap<String, Flight> flightList;  // All flights indexed by flight number
-    private static HashMap<String, ArrayList<Flight>> flightIndex;  // Flights indexed by route (e.g., "JFK-LAX")
+    private static FlightGraph flightNetwork; // Graph structure: airports connected by flights
+    private static FSFileReader fileReader; // Provides airport lookup by code
+    private static HashMap<String, Flight> flightList; // All flights indexed by flight number
+    private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFK-LAX")
 
     public static void main(String[] args) {
         // Step 1: Load all flight data before starting the server
@@ -61,7 +61,7 @@ public class Server {
         // to call this API on Railway - without it, browsers block the request
         Javalin app = Javalin.create(config -> {
             config.bundledPlugins.enableCors(cors -> {
-                cors.addRule(rule -> rule.anyHost());  // Allow requests from any domain
+                cors.addRule(rule -> rule.anyHost()); // Allow requests from any domain
             });
         });
 
@@ -83,7 +83,8 @@ public class Server {
         // Returns cheapest price to reach every other airport from the origin
         app.get("/api/routes/cheapest", Server::findCheapestRoutes);
 
-        // Multi-city search: permute destinations and find valid routes with flights per leg
+        // Multi-city search: permute destinations and find valid routes with flights
+        // per leg
         // Example: /api/flights/multicity?from=YYZ&destinations=JFK,LAX,FCO
         app.get("/api/flights/multicity", Server::searchMultiCity);
 
@@ -125,7 +126,8 @@ public class Server {
         // Load flights from file
         flightList = FlightReader.readFlights(filepath, airports);
 
-        // Create an index of flights by route (e.g., "JFK-LAX" -> [flight1, flight2, ...])
+        // Create an index of flights by route (e.g., "JFK-LAX" -> [flight1, flight2,
+        // ...])
         // This makes searching for flights between two airports O(1) instead of O(n)
         flightIndex = FlightGenerator.flightMapper(flightList);
 
@@ -152,9 +154,10 @@ public class Server {
      *
      * Example response:
      * [
-     *   {"code": "JFK", "name": "John F. Kennedy International Airport", "latitude": 40.6413, ...},
-     *   {"code": "LAX", "name": "Los Angeles International Airport", ...},
-     *   ...
+     * {"code": "JFK", "name": "John F. Kennedy International Airport", "latitude":
+     * 40.6413, ...},
+     * {"code": "LAX", "name": "Los Angeles International Airport", ...},
+     * ...
      * ]
      */
     private static void getAirports(Context ctx) {
@@ -185,17 +188,17 @@ public class Server {
      * Returns direct flights between two airports
      *
      * Query parameters:
-     *   from - origin airport code (e.g., "JFK")
-     *   to   - destination airport code (e.g., "LAX")
+     * from - origin airport code (e.g., "JFK")
+     * to - destination airport code (e.g., "LAX")
      *
      * Example response:
      * {
-     *   "from": "JFK",
-     *   "to": "LAX",
-     *   "flights": [
-     *     {"flightNumber": "AA 1234", "price": 350, "durationMinutes": 330, ...},
-     *     ...
-     *   ]
+     * "from": "JFK",
+     * "to": "LAX",
+     * "flights": [
+     * {"flightNumber": "AA 1234", "price": 350, "durationMinutes": 330, ...},
+     * ...
+     * ]
      * }
      */
     private static void searchFlights(Context ctx) {
@@ -231,11 +234,10 @@ public class Server {
         // Handle case where no direct flights exist
         if (flights == null || flights.isEmpty()) {
             ctx.json(Map.of(
-                "from", from,
-                "to", to,
-                "flights", new ArrayList<>(),
-                "message", "No direct flights found"
-            ));
+                    "from", from,
+                    "to", to,
+                    "flights", new ArrayList<>(),
+                    "message", "No direct flights found"));
             return;
         }
 
@@ -255,30 +257,32 @@ public class Server {
         }
 
         ctx.json(Map.of(
-            "from", from,
-            "to", to,
-            "flights", flightData
-        ));
+                "from", from,
+                "to", to,
+                "flights", flightData));
     }
 
     /**
      * GET /api/routes/cheapest?from=XXX
-     * Uses Dijkstra's algorithm to find the cheapest route from origin to ALL other airports
+     * Uses Dijkstra's algorithm to find the cheapest route from origin to ALL other
+     * airports
      *
      * This is the main feature! Dijkstra's algorithm explores the graph to find
      * the shortest (cheapest) path from one vertex to every other vertex.
      *
      * Query parameters:
-     *   from - origin airport code (e.g., "JFK")
+     * from - origin airport code (e.g., "JFK")
      *
      * Example response:
      * {
-     *   "from": "JFK",
-     *   "routes": [
-     *     {"destination": "LAX", "destinationName": "Los Angeles International Airport", "cheapestPrice": 350},
-     *     {"destination": "ORD", "destinationName": "O'Hare International Airport", "cheapestPrice": 180},
-     *     ...
-     *   ]
+     * "from": "JFK",
+     * "routes": [
+     * {"destination": "LAX", "destinationName": "Los Angeles International
+     * Airport", "cheapestPrice": 350},
+     * {"destination": "ORD", "destinationName": "O'Hare International Airport",
+     * "cheapestPrice": 180},
+     * ...
+     * ]
      * }
      */
     private static void findCheapestRoutes(Context ctx) {
@@ -301,7 +305,8 @@ public class Server {
 
         // Run Dijkstra's algorithm - returns two Maps:
         // result[0] = Map<Airport, Integer> - cheapest price to reach each airport
-        // result[1] = Map<Airport, AirportVertex> - previous vertex in path (for reconstructing route)
+        // result[1] = Map<Airport, AirportVertex> - previous vertex in path (for
+        // reconstructing route)
         Map[] result = Dijkstra.searchByPrice(flightNetwork, originVertex);
 
         // We only need the distances (prices) for this endpoint
@@ -309,7 +314,8 @@ public class Server {
         Map<Airport, Integer> distances = result[0];
 
         // Convert to JSON-friendly format
-        // Filter out unreachable airports (price = MAX_VALUE) and the origin itself (price = 0)
+        // Filter out unreachable airports (price = MAX_VALUE) and the origin itself
+        // (price = 0)
         List<Map<String, Object>> routes = new ArrayList<>();
         for (Map.Entry<Airport, Integer> entry : distances.entrySet()) {
             if (entry.getValue() != null && entry.getValue() != Integer.MAX_VALUE) {
@@ -322,26 +328,45 @@ public class Server {
         }
 
         ctx.json(Map.of(
-            "from", from,
-            "routes", routes
-        ));
+                "from", from,
+                "routes", routes));
     }
 
     /**
      * GET /api/flights/multicity?from=YYZ&destinations=JFK,LAX,FCO
-     * Permutes destination order, finds all valid routes, and returns flights per leg.
+     * Permutes destination order, finds all valid routes, and returns flights per
+     * leg.
      */
     private static void searchMultiCity(Context ctx) {
         String from = ctx.queryParam("from");
         String destinationsParam = ctx.queryParam("destinations");
 
-        if (from == null || destinationsParam == null) {
-            ctx.status(400).json(Map.of("error", "Missing 'from' or 'destinations' parameter"));
+        if (from == null) {
+            ctx.status(400).json(Map.of("error", "Please add a home airport"));
             return;
+        }
+        if (destinationsParam == null) {
+            ctx.status(400).json(Map.of("error", "Please enter a destination airport"));
+            return;
+        }
+        if (!fileReader.isValidAirportCode(from)) {
+            ctx.status(400).json(Map.of("error", "Airport not supported: " + from));
+            return;
+        }
+        String[] destinations = destinationsParam.split(",");
+        for (int i = 0; i < destinations.length; i++) {
+            destinations[i] = destinations[i].trim().toUpperCase();
+        }
+
+        for (String dest : destinations) {
+            if (!fileReader.isValidAirportCode(dest)) {
+                ctx.status(400).json(Map.of("error", "Airport not supported: " + dest));
+                return;
+            }
         }
 
         from = from.trim().toUpperCase();
-        String[] destinations = destinationsParam.split(",");
+        destinations = destinationsParam.split(",");
         for (int i = 0; i < destinations.length; i++) {
             destinations[i] = destinations[i].trim().toUpperCase();
         }
