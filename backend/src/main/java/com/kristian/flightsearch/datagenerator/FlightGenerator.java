@@ -26,7 +26,7 @@ public class FlightGenerator {
         HashMap<String, ArrayList<Flight>> flightIndex = flightMapper(flightList);
 
         ArrayList<Flight> temp = new ArrayList<>();
-        temp = flightIndex.get("DFWMCO");               //search for flights from JFK to SEA
+        //temp = flightIndex.get("DFWMCO");               //search for flights from JFK to SEA
 
         // for (Flight f: temp){
         //     fp.print(f);
@@ -34,8 +34,7 @@ public class FlightGenerator {
 
         routeCounter(flightIndex);
         //flightNumSearch(flightList);
-        flightRouteSearch(flightIndex);
-        
+        //flightRouteSearch(flightIndex);
 
     }
 

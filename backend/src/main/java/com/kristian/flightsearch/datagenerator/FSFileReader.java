@@ -49,6 +49,9 @@ public class FSFileReader {
                 return;
             }
 
+            // Skip the header row
+            reader.readLine();
+
             String line;
             while ((line = reader.readLine()) != null) {
                 line = line.trim();
@@ -56,7 +59,8 @@ public class FSFileReader {
                     continue;
 
                 // Parse CSV: code,name,lat,lon,runwayLength,elevation,country,city
-                String[] airportData = line.split(",");
+                // Some fields contain commas inside double quotes
+                String[] airportData = parseCsvLine(line);
 
                 if (airportData.length >= 8) {
                     String code = airportData[0];
@@ -116,6 +120,28 @@ public class FSFileReader {
         }
 
         return null;
+    }
+
+    // Splits a CSV line, respecting double-quoted fields that may contain commas
+    private String[] parseCsvLine(String line) {
+        ArrayList<String> fields = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean inQuotes = false;
+
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (c == '"') {
+                inQuotes = !inQuotes;
+            } else if (c == ',' && !inQuotes) {
+                fields.add(current.toString().trim());
+                current = new StringBuilder();
+            } else {
+                current.append(c);
+            }
+        }
+        fields.add(current.toString().trim());
+
+        return fields.toArray(new String[0]);
     }
 
     // Returns all airports as an array
