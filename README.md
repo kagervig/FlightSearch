@@ -42,6 +42,74 @@ mvn clean package -DskipTests
 
 Creates a fat JAR at `target/flightsearch-1.0-SNAPSHOT.jar`
 
+### Running the Frontend Locally
+
+```bash
+cd frontend
+npm run dev
+```
+
+The frontend runs on http://localhost:3000. When running locally it points to the local backend at http://localhost:8080 via `frontend/.env.development.local`. The production Railway URL is in `frontend/.env.local` and is used for production builds.
+
+### Database
+
+#### Prerequisites
+
+Install PostgreSQL 17:
+```bash
+brew install postgresql@17
+brew services start postgresql@17
+```
+
+Add `psql` to your PATH (add this to `~/.zshrc` to make it permanent):
+```bash
+export PATH="/opt/homebrew/opt/postgresql@17/bin:$PATH"
+```
+
+#### Local Setup
+
+Create the database:
+```bash
+psql postgres -c "CREATE DATABASE flightsearch;"
+```
+
+Run the migration:
+```bash
+psql flightsearch -f backend/src/main/resources/db/001_create_flights.sql
+```
+
+#### Schema
+
+The `flights` table:
+
+| Column | Type | Notes |
+|---|---|---|
+| id | UUID | Primary key, auto-generated |
+| scheduled_departure | TIMESTAMP | |
+| scheduled_arrival | TIMESTAMP | Next day if arrival < departure |
+| flight_number | VARCHAR | |
+| origin | VARCHAR | Airport code |
+| destination | VARCHAR | Airport code |
+| price | INTEGER | |
+| currency | VARCHAR | Defaults to USD |
+| duration | INTEGER | Minutes |
+
+Migrations are in `backend/src/main/resources/db/` and are numbered sequentially (e.g. `001_create_flights.sql`).
+
+#### Seeding
+
+On startup, the server automatically seeds the flights table from `flights.txt` if the table is empty. This runs on both local and Railway deployments — no manual steps required.
+
+#### Production (Railway)
+
+Set the `DATABASE_URL` environment variable in Railway. The server reads this on startup and connects automatically. The format Railway provides (`postgresql://...`) is handled automatically.
+
+#### Querying the Local Database
+
+```bash
+psql flightsearch -c "SELECT * FROM flights LIMIT 10;"
+```
+
 ### API Endpoints
 
 | Endpoint | Description |

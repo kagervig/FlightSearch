@@ -33,6 +33,7 @@ import com.kristian.flightsearch.flightgraph.FlightGraph;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
 import com.kristian.flightsearch.models.Route;
+import com.kristian.flightsearch.db.DatabaseManager;
 import com.kristian.flightsearch.multicitysearch.MultiCitySearch;
 
 import io.javalin.Javalin;
@@ -51,6 +52,7 @@ public class Server {
     public static void main(String[] args) {
         // Step 1: Load all flight data before starting the server
         initializeFlightData();
+        DatabaseManager.initialize(flightList);
 
         // Step 2: Get port from environment variable
         // Railway sets PORT automatically; we default to 8080 for local development
