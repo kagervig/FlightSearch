@@ -1,7 +1,7 @@
 package com.kristian.flightsearch.datagenerator;
 
 /*
- * FSFileReader.java - Loads airport data from a text file
+ * AirportFileReader.java - Loads airport data from a text file
  *
  * This class reads airport information from a CSV-formatted text file and provides
  * methods to look up airports by their code.
@@ -27,13 +27,13 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.HashMap;
 
-public class FSFileReader {
+public class AirportFileReader {
     private Airport[] airports; // Array of all airports (for iteration)
     private HashMap<String, Airport> airportMap; // Map for O(1) lookup by code
 
-    public FSFileReader(String filePath) {
+    public AirportFileReader(String filePath) {
         readAirportsFromFile(filePath);
-        System.out.println("FSFileReader: Loaded " + airports.length + " airports from " + filePath);
+        System.out.println("AirportFileReader: Loaded " + airports.length + " airports from " + filePath);
     }
 
     private void readAirportsFromFile(String filePath) {
@@ -167,7 +167,7 @@ public class FSFileReader {
     }
 
     public static void main(String[] args) {
-        FSFileReader fr = new FSFileReader("609airports.txt");
+        AirportFileReader fr = new AirportFileReader("609airports.txt");
 
         Airport[] airports = fr.getAirports();
         AirportPrinter ap = new AirportPrinter();

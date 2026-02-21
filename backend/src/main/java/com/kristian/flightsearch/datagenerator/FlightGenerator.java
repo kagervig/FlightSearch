@@ -233,7 +233,7 @@ public class FlightGenerator {
     }
 
     public static Airport[] getAirports(String filePath){
-        FSFileReader fr = new FSFileReader(filePath);                       //read list of airports from file
+        AirportFileReader fr = new AirportFileReader(filePath);                       //read list of airports from file
         Airport[] airports = fr.getAirports();                          //populates list of airports
         return airports;
     }

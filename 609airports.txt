@@ -607,3 +607,7 @@ CXR,Cam Ranh International Airport / Cam Ranh Air Base,11.9982,109.219002,3048,1
 SGN,Tan Son Nhat International Airport,10.8188,106.652,3050,10,VN,Ho Chi Minh City
 HAN,Noi Bai International Airport,21.221201,105.806999,3200,12,VN,Hanoi (Soc Son)
 DAD,Da Nang International Airport,16.0439,108.198997,3500,10,VN,Da Nang
+CPT,Cape Town International Airport,-33.969601,18.597200,151,496,ZA,Cape Town
+JNB,O.R. Tambo International Airport,-26.139200,28.246000,5558,1694,ZA,Johannesburg
+NAN,Nadi International Airport,-17.7554,177.4430,18,59,FJ,Nadi
+VCP,Viracopos – Campinas International Airport,-23.0074,-47.1345,2170,BR,Campinas

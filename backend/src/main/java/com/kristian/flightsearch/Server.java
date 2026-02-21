@@ -24,7 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import com.kristian.flightsearch.datagenerator.FSFileReader;
+import com.kristian.flightsearch.datagenerator.AirportFileReader;
 import com.kristian.flightsearch.datagenerator.FlightGenerator;
 import com.kristian.flightsearch.datagenerator.FlightReader;
 import com.kristian.flightsearch.flightgraph.AirportVertex;
@@ -44,7 +44,7 @@ public class Server {
     // requests
     // This is efficient because we don't reload data for every request
     private static FlightGraph flightNetwork; // Graph structure: airports connected by flights
-    private static FSFileReader fileReader; // Provides airport lookup by code
+    private static AirportFileReader fileReader; // Provides airport lookup by code
     private static HashMap<String, Flight> flightList; // All flights indexed by flight number
     private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFK-LAX")
 
@@ -116,7 +116,7 @@ public class Server {
         ArrayList<AirportVertex> airportVertices = new ArrayList<>();
 
         // Load airports from file and add them as vertices in the graph
-        fileReader = new FSFileReader("609airports.txt");
+        fileReader = new AirportFileReader("609airports.txt");
         Airport[] airports = fileReader.getAirports();
 
         for (Airport a : airports) {

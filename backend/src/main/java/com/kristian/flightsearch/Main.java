@@ -4,7 +4,7 @@ import java.util.*;
 import java.time.Duration;
 
 import com.kristian.flightsearch.utils.FlightPrinter;
-import com.kristian.flightsearch.datagenerator.FSFileReader;
+import com.kristian.flightsearch.datagenerator.AirportFileReader;
 import com.kristian.flightsearch.datagenerator.FlightGenerator;
 import com.kristian.flightsearch.datagenerator.FlightReader;
 import com.kristian.flightsearch.datagenerator.FlightWriter;
@@ -24,7 +24,7 @@ public class Main {
         ArrayList<AirportVertex> airportVertices = new ArrayList<AirportVertex>(); // declare arraylist of
                                                                                    // airportvertices
 
-        FSFileReader fileReader = new FSFileReader("609airports.txt");
+        AirportFileReader fileReader = new AirportFileReader("609airports.txt");
         Airport[] airports = fileReader.getAirports();
         for (Airport a : airports) {
             airportVertices.add(flightNetwork.addVertex(a));
@@ -53,7 +53,7 @@ public class Main {
     }
 
     public static void menu(HashMap<String, ArrayList<Flight>> flightIndex, HashMap<String, Flight> flightList,
-            FlightGraph flightNetwork, FSFileReader fileReader) {
+            FlightGraph flightNetwork, AirportFileReader fileReader) {
         Scanner scanner = new Scanner(System.in);
         String choice = "";
 
@@ -139,7 +139,7 @@ public class Main {
         scanner.close();
     }
 
-    private static String getValidAirportCode(Scanner scanner, FSFileReader fileReader, String prompt) {
+    private static String getValidAirportCode(Scanner scanner, AirportFileReader fileReader, String prompt) {
         while (true) {
             System.out.print(prompt);
             System.out.flush();
@@ -158,7 +158,7 @@ public class Main {
     }
 
     public static Airport[] getAirports(String filePath) {
-        FSFileReader fr = new FSFileReader(filePath);
+        AirportFileReader fr = new AirportFileReader(filePath);
         return fr.getAirports();
     }
 

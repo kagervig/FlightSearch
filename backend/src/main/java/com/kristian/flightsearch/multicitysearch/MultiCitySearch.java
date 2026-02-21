@@ -10,11 +10,11 @@ import com.kristian.flightsearch.datagenerator.FlightReader;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
 import com.kristian.flightsearch.models.Route;
-import com.kristian.flightsearch.datagenerator.FSFileReader;
+import com.kristian.flightsearch.datagenerator.AirportFileReader;
 import com.kristian.flightsearch.utils.FlightPrinter;
 
 public class MultiCitySearch {
-    private static final FSFileReader fileReader = new FSFileReader("609airports.txt");
+    private static final AirportFileReader fileReader = new AirportFileReader("609airports.txt");
     private static final Airport[] airports = fileReader.getAirports();
     private static final HashMap<String, Flight> flightList = FlightReader.readFlights("flights.txt", airports);
     private static final HashMap<String, ArrayList<Flight>> flightIndex = FlightGenerator.flightMapper(flightList);
