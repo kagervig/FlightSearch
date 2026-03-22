@@ -1,9 +1,0 @@
-services:
-  - type: web
-    name: flightsearch-backend
-    runtime: docker
-    dockerfilePath: ./Dockerfile
-    healthCheckPath: /health
-    envVars:
-      - key: DATABASE_URL
-        sync: false
