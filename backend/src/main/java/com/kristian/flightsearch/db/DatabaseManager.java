@@ -35,7 +35,7 @@ public class DatabaseManager {
             // Individual credentials — avoids URL parsing issues with special characters
             String dbPort = (port != null) ? port : "5432";
             String dbName = (name != null) ? name : "postgres";
-            config.setJdbcUrl("jdbc:postgresql://" + host + ":" + dbPort + "/" + dbName);
+            config.setJdbcUrl("jdbc:postgresql://" + host + ":" + dbPort + "/" + dbName + "?sslmode=require");
             config.setUsername(user);
             config.setPassword(password);
         } else {
