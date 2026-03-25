@@ -7,5 +7,6 @@ CREATE TABLE IF NOT EXISTS flights (
     destination         VARCHAR NOT NULL,
     price               INTEGER NOT NULL,
     currency            VARCHAR NOT NULL,
-    duration            INTEGER NOT NULL
+    duration            INTEGER NOT NULL,
+    distance            DOUBLE PRECISION NOT NULL
 );
