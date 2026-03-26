@@ -7,6 +7,7 @@ import com.zaxxer.hikari.HikariDataSource;
 
 import javax.sql.DataSource;
 import java.io.InputStream;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.sql.*;
 import java.time.LocalDate;
@@ -41,10 +42,23 @@ public class DatabaseManager {
         } else {
             String dbUrl = System.getenv("DATABASE_URL");
             if (dbUrl != null) {
-                String jdbcUrl = dbUrl
-                    .replace("postgresql://", "jdbc:postgresql://")
-                    .replace("postgres://", "jdbc:postgresql://");
-                config.setJdbcUrl(jdbcUrl);
+                // Parse the URL ourselves so the JDBC driver receives credentials
+                // separately — avoids driver mis-parsing of the userinfo component
+                try {
+                    URI uri = new URI(dbUrl.replace("postgresql://", "http://").replace("postgres://", "http://"));
+                    String dbHost = uri.getHost();
+                    int dbPort   = uri.getPort() != -1 ? uri.getPort() : 5432;
+                    String dbName = uri.getPath().replaceFirst("^/", "");
+                    String userInfo = uri.getUserInfo();
+                    int colon = userInfo.indexOf(':');
+                    String dbUser = userInfo.substring(0, colon);
+                    String dbPass = userInfo.substring(colon + 1);
+                    config.setJdbcUrl("jdbc:postgresql://" + dbHost + ":" + dbPort + "/" + dbName);
+                    config.setUsername(dbUser);
+                    config.setPassword(dbPass);
+                } catch (Exception e) {
+                    throw new RuntimeException("Failed to parse DATABASE_URL: " + e.getMessage(), e);
+                }
             } else {
                 config.setJdbcUrl("jdbc:postgresql://localhost:5432/flightsearch");
             }
