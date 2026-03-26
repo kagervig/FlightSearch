@@ -1,5 +1,6 @@
 package com.kristian.flightsearch.datagenerator;
 
+import com.kristian.flightsearch.models.Airline;
 import com.kristian.flightsearch.models.Airport;
 
 
@@ -8,8 +9,7 @@ public class NewFlightGenerator {
 
 
     public static Airline[] getAirlines(){
-        
-        Airline[] airlineList = 
+        return new Airline[0]; //fixme
     }
 
     public static Airport[] getAirports(String filePath){

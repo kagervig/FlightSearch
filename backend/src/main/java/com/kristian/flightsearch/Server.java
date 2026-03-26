@@ -33,6 +33,7 @@ import com.kristian.flightsearch.flightgraph.FlightGraph;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
 import com.kristian.flightsearch.models.Route;
+import com.kristian.flightsearch.db.DatabaseManager;
 import com.kristian.flightsearch.multicitysearch.MultiCitySearch;
 
 import io.javalin.Javalin;
@@ -111,23 +112,28 @@ public class Server {
         // Create an empty weighted, directed graph
         // Weighted = edges have values (price, duration)
         // Directed = JFK->LAX is different from LAX->JFK
-        String filepath = "flights.txt";
         flightNetwork = new FlightGraph(true, true);
-        ArrayList<AirportVertex> airportVertices = new ArrayList<>();
 
         // Load airports from file and add them as vertices in the graph
         fileReader = new AirportFileReader("609airports.txt");
         Airport[] airports = fileReader.getAirports();
 
         for (Airport a : airports) {
-            airportVertices.add(flightNetwork.addVertex(a));
+            flightNetwork.addVertex(a);
         }
 
-        // Load flights from file
-        flightList = FlightReader.readFlights(filepath, airports);
+        // Connect to database and run migrations
+        DatabaseManager.initialize();
 
-        // Create an index of flights by route (e.g., "JFK-LAX" -> [flight1, flight2,
-        // ...])
+        // Seed from flights.txt on first run, then read from database from that point on
+        if (DatabaseManager.isFlightsTableEmpty()) {
+            HashMap<String, Flight> seedData = FlightReader.readFlights("flights.txt", airports);
+            DatabaseManager.seedFlights(seedData);
+        }
+
+        flightList = DatabaseManager.readFlights(airports);
+
+        // Create an index of flights by route (e.g., "JFK-LAX" -> [flight1, flight2, ...])
         // This makes searching for flights between two airports O(1) instead of O(n)
         flightIndex = FlightGenerator.flightMapper(flightList);
 

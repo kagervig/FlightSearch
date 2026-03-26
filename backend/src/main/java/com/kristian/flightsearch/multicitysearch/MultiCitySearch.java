@@ -1,22 +1,32 @@
 
 package com.kristian.flightsearch.multicitysearch;
 
+import java.sql.Array;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Scanner;
 
+import com.kristian.flightsearch.datagenerator.AirportFileReader;
 import com.kristian.flightsearch.datagenerator.FlightGenerator;
 import com.kristian.flightsearch.datagenerator.FlightReader;
+import com.kristian.flightsearch.db.DatabaseManager;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
 import com.kristian.flightsearch.models.Route;
-import com.kristian.flightsearch.datagenerator.AirportFileReader;
 import com.kristian.flightsearch.utils.FlightPrinter;
 
 public class MultiCitySearch {
     private static final AirportFileReader fileReader = new AirportFileReader("609airports.txt");
     private static final Airport[] airports = fileReader.getAirports();
     private static final HashMap<String, Flight> flightList = FlightReader.readFlights("flights.txt", airports);
+
+    // TODO: Don't set this as a final static variable
     private static final HashMap<String, ArrayList<Flight>> flightIndex = FlightGenerator.flightMapper(flightList);
 
     /**
@@ -28,6 +38,9 @@ public class MultiCitySearch {
      */
     public static ArrayList<Route> search(String homeAirport, String[] destinations) {
         ArrayList<String[]> combinations = flightCombinations(destinations, homeAirport);
+
+        // TODO: Generate the flight Index with the database 
+        // flightIndex = buildFlightIndexForRoute(combinations);
 
         // remove routes where any leg has no available flight
         for (int i = combinations.size() - 1; i >= 0; i--) {
@@ -194,6 +207,75 @@ public class MultiCitySearch {
         // Generate all permutations of citiesToVisit
         permuteRoutes(airportsToVisit, 0, flightCombinations, homeAirport);
         return flightCombinations;
+    }
+
+    // builds a flightIndex from the database containing only flights between the airports in flightRoute
+    public static HashMap<String, ArrayList<Flight>> buildFlightIndexForRoute(String[] flightRoute) {
+        HashSet<String> uniqueAirports = new HashSet<>(Arrays.asList(flightRoute));
+
+        // Build a lookup map limited to the airports we care about
+        HashMap<String, Airport> airportMap = new HashMap<>();
+        for (Airport a : airports) {
+            if (uniqueAirports.contains(a.getCode())) {
+                airportMap.put(a.getCode(), a);
+            }
+        }
+
+        HashMap<String, ArrayList<Flight>> flightIndex = new HashMap<>();
+        String sql = "SELECT flight_number, origin, destination, distance, scheduled_departure, price " +
+                     "FROM flights WHERE origin = ANY(?) AND destination = ANY(?)";
+
+        try (Connection conn = DatabaseManager.getDataSource().getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            Array sqlArray = conn.createArrayOf("varchar", uniqueAirports.toArray(new String[0]));
+            pstmt.setArray(1, sqlArray);
+            pstmt.setArray(2, sqlArray);
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    String flightNumber = rs.getString("flight_number");
+                    Airport origin = airportMap.get(rs.getString("origin"));
+                    Airport destination = airportMap.get(rs.getString("destination"));
+                    double distance = rs.getDouble("distance");
+                    LocalTime departureTime = rs.getTimestamp("scheduled_departure").toLocalDateTime().toLocalTime();
+                    int price = rs.getInt("price");
+
+                    if (origin != null && destination != null) {
+                        Flight flight = new Flight(origin, destination, distance, departureTime, flightNumber);
+                        flight.setPrice(price);
+
+                        String key = origin.getCode() + destination.getCode();
+                        flightIndex.computeIfAbsent(key, k -> new ArrayList<>()).add(flight);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("Error building flight index from database: " + e.getMessage());
+        }
+
+        return flightIndex;
+    }
+
+    // check if a flight exists for each leg of the route by querying the database
+    public static boolean hasFlightsForAllLegsDatabase(String[] flightRoute) {
+        String sql = "SELECT COUNT(*) FROM flights WHERE origin = ? AND destination = ?";
+        try (Connection conn = DatabaseManager.getDataSource().getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            for (int i = 0; i < flightRoute.length - 1; i++) {
+                pstmt.setString(1, flightRoute[i]);
+                pstmt.setString(2, flightRoute[i + 1]);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    if (rs.next() && rs.getInt(1) == 0) {
+                        return false;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("Error checking flights in database: " + e.getMessage());
+            return false;
+        }
+        return true;
     }
 
     // check if a flight exists that connects each airport on the route

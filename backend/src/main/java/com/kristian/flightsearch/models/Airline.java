@@ -24,7 +24,6 @@ public class Airline {
         this.destinations = destinations;
     }
 
-    //The constructor Airline(String, String, boolean, String, String, boolean, boolean, boolean, int) is undefined
 
 
     //overloaded constructor which parses airline hub data from file
