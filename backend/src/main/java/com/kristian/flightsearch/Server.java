@@ -27,13 +27,14 @@ import java.util.Map;
 import com.kristian.flightsearch.datagenerator.AirportFileReader;
 import com.kristian.flightsearch.datagenerator.FlightGenerator;
 import com.kristian.flightsearch.datagenerator.FlightReader;
+import com.kristian.flightsearch.db.DatabaseManager;
+import com.kristian.flightsearch.db.FlightStore;
 import com.kristian.flightsearch.flightgraph.AirportVertex;
 import com.kristian.flightsearch.flightgraph.Dijkstra;
 import com.kristian.flightsearch.flightgraph.FlightGraph;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
 import com.kristian.flightsearch.models.Route;
-import com.kristian.flightsearch.db.DatabaseManager;
 import com.kristian.flightsearch.multicitysearch.MultiCitySearch;
 
 import io.javalin.Javalin;
@@ -107,31 +108,24 @@ public class Server {
      * We load everything into static variables so it's available for all requests.
      */
     private static void initializeFlightData() {
-        System.out.println("Initializing flight data...");
+        // Connect to database and run migrations
+        DatabaseManager.initialize();
 
-        // Create an empty weighted, directed graph
-        // Weighted = edges have values (price, duration)
-        // Directed = JFK->LAX is different from LAX->JFK
-        flightNetwork = new FlightGraph(true, true);
-
-        // Load airports from file and add them as vertices in the graph
+        //REMOVE THIS once the airport table exists in DB
         fileReader = new AirportFileReader("609airports.txt");
         Airport[] airports = fileReader.getAirports();
 
-        for (Airport a : airports) {
-            flightNetwork.addVertex(a);
-        }
-
-        // Connect to database and run migrations
-        DatabaseManager.initialize();
+        FlightStore flightStore = new FlightStore(DatabaseManager.getDataSource());
 
         // Seed from flights.txt on first run, then read from database from that point on
         if (DatabaseManager.isFlightsTableEmpty()) {
             HashMap<String, Flight> seedData = FlightReader.readFlights("flights.txt", airports);
-            DatabaseManager.seedFlights(seedData);
+            flightStore.seedFlights(seedData);
         }
 
-        flightList = DatabaseManager.readFlights(airports);
+        initalizeFlightGraph(airports);
+
+        flightList = flightStore.readFlights(airports);
 
         // Create an index of flights by route (e.g., "JFK-LAX" -> [flight1, flight2, ...])
         // This makes searching for flights between two airports O(1) instead of O(n)
@@ -153,6 +147,19 @@ public class Server {
 
         System.out.println("Loaded " + airports.length + " airports and " + flightList.size() + " flights");
     }
+
+    public static void initalizeFlightGraph(Airport[] airports){
+            System.out.println("Initializing flight data...");
+
+            // Create an empty weighted, directed graph
+            // Weighted = edges have values (price, duration)
+            // Directed = JFK->LAX is different from LAX->JFK
+            flightNetwork = new FlightGraph(true, true);
+
+            for (Airport a : airports) {
+                flightNetwork.addVertex(a);
+            }
+        }
 
     /**
      * GET /api/airports
