@@ -13,16 +13,9 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
 /*
-ERIN'S FEEDBACK
-1. this class is too big. it should JUST be setting up the DB
-2. graph setup should be called by server.java, and moved out of this class DONE
-3. the functions in this class all need descriptions    DONE
-4. the initialize function is too big, break it down into smaller function for legibility DONE
-
-FUTURE FEEDBACK
+ERIN'S FUTURE FEEDBACK
 1. need to make a database of airports
 2. modify readflights function so that it doesn't need airport objects passed in. We can pull any other info needed from the db.
-
 */
 
 public class DatabaseManager {
@@ -86,12 +79,13 @@ public class DatabaseManager {
         System.out.println("Database connection established");
 
     }
-
+    
+    /*
+    * Creates tables in database if they do not already exist. Reads from the
+    * migrations file: db/001_create_flights.sql
+    */
     private static void runMigrations() {
-        /*
-         * Creates tables in database if they do not already exist. Reads from the
-         * migrations file: db/001_create_flights.sql
-         */
+        
         for (String migrationFile : MIGRATIONS) {
             try (InputStream is = DatabaseManager.class.getClassLoader().getResourceAsStream(migrationFile)) {
                 if (is == null) {
@@ -110,11 +104,12 @@ public class DatabaseManager {
         }
     }
 
+    /*
+    * Checks if the flights table in database is empty. Server.java calls this and
+    * populates the table if necessary
+    */
     public static boolean isFlightsTableEmpty() {
-        /*
-         * Checks if the flights table in database is empty. Server.java calls this and
-         * populates the table if necessary
-         */
+        
         try (Connection conn = dataSource.getConnection();
                 Statement stmt = conn.createStatement();
                 ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM flights")) {

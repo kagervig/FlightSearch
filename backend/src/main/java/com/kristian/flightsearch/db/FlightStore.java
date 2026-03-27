@@ -15,22 +15,31 @@ import javax.sql.DataSource;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
 
-public class FlightRepository {
+/*
+ * Handles reading and writing flight data to the database.
+ */
+
+public class FlightStore {
 
     private final DataSource dataSource;
 
-    public FlightRepository(DataSource dataSource) {
+    public FlightStore(DataSource dataSource) {
         this.dataSource = dataSource;
     }
 
+    /*
+     * Takes the flightlist and writes it into the database.
+     * Called only if the database is empty.
+     */
     public void seedFlights(HashMap<String, Flight> flightList) {
-        String sql = "INSERT INTO flights (scheduled_departure, scheduled_arrival, flight_number, origin, destination, price, currency, duration, distance) " +
-                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO flights (scheduled_departure, scheduled_arrival, flight_number, origin, destination, price, currency, duration, distance) "
+                +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         LocalDate baseDate = LocalDate.now();
 
         try (Connection conn = dataSource.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
             conn.setAutoCommit(false);
             int count = 0;
@@ -40,8 +49,8 @@ public class FlightRepository {
 
                 // If arrival is earlier than departure, the flight lands the next day
                 LocalDate arrivalDate = flight.getArrivalTime().isBefore(flight.getDepartureTime())
-                    ? baseDate.plusDays(1)
-                    : baseDate;
+                        ? baseDate.plusDays(1)
+                        : baseDate;
                 LocalDateTime arrival = LocalDateTime.of(arrivalDate, flight.getArrivalTime());
 
                 pstmt.setTimestamp(1, Timestamp.valueOf(departure));
@@ -70,6 +79,10 @@ public class FlightRepository {
         }
     }
 
+    /*
+     * Reads flights from the database and returns a HashMap of all flights with
+     * flight number as the key.
+     */
     public HashMap<String, Flight> readFlights(Airport[] airports) {
         // Build a map for O(1) airport lookup by code
         HashMap<String, Airport> airportMap = new HashMap<>();
@@ -81,8 +94,8 @@ public class FlightRepository {
         String sql = "SELECT flight_number, origin, destination, distance, scheduled_departure, price FROM flights";
 
         try (Connection conn = dataSource.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
+                Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery(sql)) {
 
             while (rs.next()) {
                 String flightNumber = rs.getString("flight_number");
