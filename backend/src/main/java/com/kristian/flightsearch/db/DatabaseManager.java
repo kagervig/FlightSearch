@@ -1,19 +1,37 @@
 package com.kristian.flightsearch.db;
 
+import java.io.InputStream;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.HashMap;
+
+import javax.sql.DataSource;
+
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
-import javax.sql.DataSource;
-import java.io.InputStream;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.sql.*;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
-import java.util.HashMap;
+/*
+ERIN'S FEEDBACK
+1. this class is too big. it should JUST be setting up the DB
+2. graph setup should be called by server.java, and moved out of this class
+3. the functions in this class all need descriptions
+4. the initialize function is too big, break it down into smaller function for legibility
+
+FUTURE FEEDBACK 
+1. need to make a database of airports
+2. modify readflights function so that it doesn't need airport objects passed in. We can pull any other info needed from the db.
+
+*/
 
 public class DatabaseManager {
 
@@ -24,6 +42,12 @@ public class DatabaseManager {
     };
 
     public static void initialize() {
+        connectToDatabase();
+
+        runMigrations();
+    }
+
+    public static void connectToDatabase(){
         HikariConfig config = new HikariConfig();
 
         String host     = System.getenv("DB_HOST");
@@ -67,7 +91,6 @@ public class DatabaseManager {
         dataSource = new HikariDataSource(config);
         System.out.println("Database connection established");
 
-        runMigrations();
     }
 
     private static void runMigrations() {
