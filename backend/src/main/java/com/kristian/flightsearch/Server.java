@@ -28,6 +28,7 @@ import com.kristian.flightsearch.datagenerator.AirportFileReader;
 import com.kristian.flightsearch.datagenerator.FlightGenerator;
 import com.kristian.flightsearch.datagenerator.FlightReader;
 import com.kristian.flightsearch.db.DatabaseManager;
+import com.kristian.flightsearch.db.FlightRepository;
 import com.kristian.flightsearch.flightgraph.AirportVertex;
 import com.kristian.flightsearch.flightgraph.Dijkstra;
 import com.kristian.flightsearch.flightgraph.FlightGraph;
@@ -114,16 +115,17 @@ public class Server {
         fileReader = new AirportFileReader("609airports.txt");
         Airport[] airports = fileReader.getAirports();
 
-        // Seed from flights.txt on first run, then read from database from that point on
-        if (DatabaseManager.isFlightsTableEmpty()) {           
-            HashMap<String, Flight> seedData = FlightReader.readFlights("flights.txt", airports);
-            DatabaseManager.seedFlights(seedData);
+        FlightRepository flightRepository = new FlightRepository(DatabaseManager.getDataSource());
 
+        // Seed from flights.txt on first run, then read from database from that point on
+        if (DatabaseManager.isFlightsTableEmpty()) {
+            HashMap<String, Flight> seedData = FlightReader.readFlights("flights.txt", airports);
+            flightRepository.seedFlights(seedData);
         }
 
         initalizeFlightGraph(airports);
 
-        flightList = DatabaseManager.readFlights(airports);
+        flightList = flightRepository.readFlights(airports);
 
         // Create an index of flights by route (e.g., "JFK-LAX" -> [flight1, flight2, ...])
         // This makes searching for flights between two airports O(1) instead of O(n)

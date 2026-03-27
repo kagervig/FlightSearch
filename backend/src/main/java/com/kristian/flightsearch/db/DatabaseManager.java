@@ -4,30 +4,22 @@ import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
-import java.sql.Timestamp;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
-import java.util.HashMap;
 
 import javax.sql.DataSource;
 
-import com.kristian.flightsearch.models.Airport;
-import com.kristian.flightsearch.models.Flight;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
 /*
 ERIN'S FEEDBACK
 1. this class is too big. it should JUST be setting up the DB
-2. graph setup should be called by server.java, and moved out of this class
-3. the functions in this class all need descriptions
-4. the initialize function is too big, break it down into smaller function for legibility
+2. graph setup should be called by server.java, and moved out of this class DONE
+3. the functions in this class all need descriptions    DONE
+4. the initialize function is too big, break it down into smaller function for legibility DONE
 
-FUTURE FEEDBACK 
+FUTURE FEEDBACK
 1. need to make a database of airports
 2. modify readflights function so that it doesn't need airport objects passed in. We can pull any other info needed from the db.
 
@@ -38,22 +30,24 @@ public class DatabaseManager {
     private static HikariDataSource dataSource;
 
     private static final String[] MIGRATIONS = {
-        "db/001_create_flights.sql"
+            "db/001_create_flights.sql"
     };
 
     public static void initialize() {
+        // Calls all methods required to get the database running correctly
         connectToDatabase();
-
         runMigrations();
     }
 
-    public static void connectToDatabase(){
+    public static void connectToDatabase() {
+        /* Establishes connection with PostgresDB */
+
         HikariConfig config = new HikariConfig();
 
-        String host     = System.getenv("DB_HOST");
-        String port     = System.getenv("DB_PORT");
-        String name     = System.getenv("DB_NAME");
-        String user     = System.getenv("DB_USER");
+        String host = System.getenv("DB_HOST");
+        String port = System.getenv("DB_PORT");
+        String name = System.getenv("DB_NAME");
+        String user = System.getenv("DB_USER");
         String password = System.getenv("DB_PASSWORD");
 
         if (host != null && user != null && password != null) {
@@ -71,7 +65,7 @@ public class DatabaseManager {
                 try {
                     URI uri = new URI(dbUrl.replace("postgresql://", "http://").replace("postgres://", "http://"));
                     String dbHost = uri.getHost();
-                    int dbPort   = uri.getPort() != -1 ? uri.getPort() : 5432;
+                    int dbPort = uri.getPort() != -1 ? uri.getPort() : 5432;
                     String dbName = uri.getPath().replaceFirst("^/", "");
                     String userInfo = uri.getUserInfo();
                     int colon = userInfo.indexOf(':');
@@ -94,6 +88,10 @@ public class DatabaseManager {
     }
 
     private static void runMigrations() {
+        /*
+         * Creates tables in database if they do not already exist. Reads from the
+         * migrations file: db/001_create_flights.sql
+         */
         for (String migrationFile : MIGRATIONS) {
             try (InputStream is = DatabaseManager.class.getClassLoader().getResourceAsStream(migrationFile)) {
                 if (is == null) {
@@ -102,7 +100,7 @@ public class DatabaseManager {
                 }
                 String sql = new String(is.readAllBytes(), StandardCharsets.UTF_8);
                 try (Connection conn = dataSource.getConnection();
-                     Statement stmt = conn.createStatement()) {
+                        Statement stmt = conn.createStatement()) {
                     stmt.execute(sql);
                     System.out.println("Applied migration: " + migrationFile);
                 }
@@ -113,9 +111,13 @@ public class DatabaseManager {
     }
 
     public static boolean isFlightsTableEmpty() {
+        /*
+         * Checks if the flights table in database is empty. Server.java calls this and
+         * populates the table if necessary
+         */
         try (Connection conn = dataSource.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM flights")) {
+                Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM flights")) {
             if (rs.next()) {
                 return rs.getInt(1) == 0;
             }
@@ -123,92 +125,6 @@ public class DatabaseManager {
             System.out.println("Error checking flights table: " + e.getMessage());
         }
         return true;
-    }
-
-    public static void seedFlights(HashMap<String, Flight> flightList) {
-        String sql = "INSERT INTO flights (scheduled_departure, scheduled_arrival, flight_number, origin, destination, price, currency, duration, distance) " +
-                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-        LocalDate baseDate = LocalDate.now();
-
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-
-            conn.setAutoCommit(false);
-            int count = 0;
-
-            for (Flight flight : flightList.values()) {
-                LocalDateTime departure = LocalDateTime.of(baseDate, flight.getDepartureTime());
-
-                // If arrival is earlier than departure, the flight lands the next day
-                LocalDate arrivalDate = flight.getArrivalTime().isBefore(flight.getDepartureTime())
-                    ? baseDate.plusDays(1)
-                    : baseDate;
-                LocalDateTime arrival = LocalDateTime.of(arrivalDate, flight.getArrivalTime());
-
-                pstmt.setTimestamp(1, Timestamp.valueOf(departure));
-                pstmt.setTimestamp(2, Timestamp.valueOf(arrival));
-                pstmt.setString(3, flight.getFlightNumber());
-                pstmt.setString(4, flight.getOrigin().getCode());
-                pstmt.setString(5, flight.getDestination().getCode());
-                pstmt.setInt(6, flight.getPrice());
-                pstmt.setString(7, "USD");
-                pstmt.setInt(8, (int) flight.getDuration().toMinutes());
-                pstmt.setDouble(9, flight.getDistance());
-                pstmt.addBatch();
-
-                count++;
-                if (count % 500 == 0) {
-                    pstmt.executeBatch();
-                }
-            }
-
-            pstmt.executeBatch();
-            conn.commit();
-            System.out.println("Seeded " + count + " flights into database");
-
-        } catch (Exception e) {
-            System.out.println("Error seeding flights: " + e.getMessage());
-        }
-    }
-
-    public static HashMap<String, Flight> readFlights(Airport[] airports) {
-        // Build a map for O(1) airport lookup by code
-        HashMap<String, Airport> airportMap = new HashMap<>();
-        for (Airport a : airports) {
-            airportMap.put(a.getCode(), a);
-        }
-
-        HashMap<String, Flight> flightList = new HashMap<>();
-        String sql = "SELECT flight_number, origin, destination, distance, scheduled_departure, price FROM flights";
-
-        try (Connection conn = dataSource.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-
-            while (rs.next()) {
-                String flightNumber = rs.getString("flight_number");
-                Airport origin = airportMap.get(rs.getString("origin"));
-                Airport destination = airportMap.get(rs.getString("destination"));
-                double distance = rs.getDouble("distance");
-                LocalTime departureTime = rs.getTimestamp("scheduled_departure").toLocalDateTime().toLocalTime();
-                int price = rs.getInt("price");
-
-                if (origin != null && destination != null) {
-                    // Flight constructor calculates duration and arrival time from distance
-                    Flight flight = new Flight(origin, destination, distance, departureTime, flightNumber);
-                    flight.setPrice(price);
-                    flightList.put(flightNumber, flight);
-                }
-            }
-
-            System.out.println("Loaded " + flightList.size() + " flights from database");
-
-        } catch (Exception e) {
-            System.out.println("Error reading flights from database: " + e.getMessage());
-        }
-
-        return flightList;
     }
 
     public static DataSource getDataSource() {
