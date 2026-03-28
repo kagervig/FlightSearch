@@ -1,17 +1,14 @@
 package com.kristian.flightsearch.db;
 
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
-import java.sql.Timestamp;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.HashMap;
 
 import javax.sql.DataSource;
 
+import com.kristian.flightsearch.datagenerator.FlightDistanceCalculator;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
 
@@ -28,70 +25,28 @@ public class FlightStore {
     }
 
     /*
-     * Takes the flightlist and writes it into the database.
-     * Called only if the database is empty.
+     * Reads flights from the new schema, joining airports to compute distance.
+     * Deduplicates by flight_number — keeps the first row encountered (ordered by
+     * flight_number, flight_date). Returns a HashMap keyed by flight_number.
      */
-    public void seedFlights(HashMap<String, Flight> flightList) {
-        String sql = "INSERT INTO flights (scheduled_departure, scheduled_arrival, flight_number, origin, destination, price, currency, duration, distance) "
-                +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-        LocalDate baseDate = LocalDate.now();
-
-        try (Connection conn = dataSource.getConnection();
-                PreparedStatement pstmt = conn.prepareStatement(sql)) {
-
-            conn.setAutoCommit(false);
-            int count = 0;
-
-            for (Flight flight : flightList.values()) {
-                LocalDateTime departure = LocalDateTime.of(baseDate, flight.getDepartureTime());
-
-                // If arrival is earlier than departure, the flight lands the next day
-                LocalDate arrivalDate = flight.getArrivalTime().isBefore(flight.getDepartureTime())
-                        ? baseDate.plusDays(1)
-                        : baseDate;
-                LocalDateTime arrival = LocalDateTime.of(arrivalDate, flight.getArrivalTime());
-
-                pstmt.setTimestamp(1, Timestamp.valueOf(departure));
-                pstmt.setTimestamp(2, Timestamp.valueOf(arrival));
-                pstmt.setString(3, flight.getFlightNumber());
-                pstmt.setString(4, flight.getOrigin().getCode());
-                pstmt.setString(5, flight.getDestination().getCode());
-                pstmt.setInt(6, flight.getPrice());
-                pstmt.setString(7, "USD");
-                pstmt.setInt(8, (int) flight.getDuration().toMinutes());
-                pstmt.setDouble(9, flight.getDistance());
-                pstmt.addBatch();
-
-                count++;
-                if (count % 500 == 0) {
-                    pstmt.executeBatch();
-                }
-            }
-
-            pstmt.executeBatch();
-            conn.commit();
-            System.out.println("Seeded " + count + " flights into database");
-
-        } catch (Exception e) {
-            System.out.println("Error seeding flights: " + e.getMessage());
-        }
-    }
-
-    /*
-     * Reads flights from the database and returns a HashMap of all flights with
-     * flight number as the key.
-     */
-    public HashMap<String, Flight> readFlights(Airport[] airports) {
-        // Build a map for O(1) airport lookup by code
-        HashMap<String, Airport> airportMap = new HashMap<>();
-        for (Airport a : airports) {
-            airportMap.put(a.getCode(), a);
-        }
-
+    public HashMap<String, Flight> readFlights() {
         HashMap<String, Flight> flightList = new HashMap<>();
-        String sql = "SELECT flight_number, origin, destination, distance, scheduled_departure, price FROM flights";
+        String sql = "SELECT f.flight_number, f.departure_time, f.ticket_price, "
+                + "a_orig.iata_code AS origin_code, a_orig.name AS origin_name, "
+                + "a_orig.city AS origin_city, a_orig.country AS origin_country, "
+                + "a_orig.latitude AS origin_lat, a_orig.longitude AS origin_lon, "
+                + "a_orig.timezone AS origin_tz, a_orig.elevation_ft AS origin_elev, "
+                + "a_orig.max_runway_length_ft AS origin_runway, "
+                + "a_dest.iata_code AS dest_code, a_dest.name AS dest_name, "
+                + "a_dest.city AS dest_city, a_dest.country AS dest_country, "
+                + "a_dest.latitude AS dest_lat, a_dest.longitude AS dest_lon, "
+                + "a_dest.timezone AS dest_tz, a_dest.elevation_ft AS dest_elev, "
+                + "a_dest.max_runway_length_ft AS dest_runway "
+                + "FROM flights f "
+                + "JOIN airports a_orig ON a_orig.iata_code = f.origin "
+                + "JOIN airports a_dest ON a_dest.iata_code = f.destination "
+                + "WHERE f.stops = 0 "
+                + "ORDER BY f.flight_number, f.flight_date";
 
         try (Connection conn = dataSource.getConnection();
                 Statement stmt = conn.createStatement();
@@ -99,18 +54,28 @@ public class FlightStore {
 
             while (rs.next()) {
                 String flightNumber = rs.getString("flight_number");
-                Airport origin = airportMap.get(rs.getString("origin"));
-                Airport destination = airportMap.get(rs.getString("destination"));
-                double distance = rs.getDouble("distance");
-                LocalTime departureTime = rs.getTimestamp("scheduled_departure").toLocalDateTime().toLocalTime();
-                int price = rs.getInt("price");
+                if (flightList.containsKey(flightNumber)) continue;
 
-                if (origin != null && destination != null) {
-                    // Flight constructor calculates duration and arrival time from distance
-                    Flight flight = new Flight(origin, destination, distance, departureTime, flightNumber);
-                    flight.setPrice(price);
-                    flightList.put(flightNumber, flight);
-                }
+                Airport origin = new Airport(
+                        rs.getString("origin_code"), rs.getString("origin_name"),
+                        rs.getDouble("origin_lat"), rs.getDouble("origin_lon"),
+                        rs.getInt("origin_runway"), rs.getInt("origin_elev"),
+                        rs.getString("origin_city"), rs.getString("origin_country"));
+
+                Airport destination = new Airport(
+                        rs.getString("dest_code"), rs.getString("dest_name"),
+                        rs.getDouble("dest_lat"), rs.getDouble("dest_lon"),
+                        rs.getInt("dest_runway"), rs.getInt("dest_elev"),
+                        rs.getString("dest_city"), rs.getString("dest_country"));
+
+                double distance = FlightDistanceCalculator.calcDistance(origin, destination);
+                LocalTime departureTime = rs.getTime("departure_time").toLocalTime();
+                int price = rs.getBigDecimal("ticket_price").intValue();
+
+                // Flight constructor calculates duration and arrival time from distance
+                Flight flight = new Flight(origin, destination, distance, departureTime, flightNumber);
+                flight.setPrice(price);
+                flightList.put(flightNumber, flight);
             }
 
             System.out.println("Loaded " + flightList.size() + " flights from database");
