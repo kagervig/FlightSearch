@@ -90,6 +90,10 @@ public class Server {
         // Example: /api/flights/multicity?from=YYZ&destinations=JFK,LAX,FCO
         app.get("/api/flights/multicity", Server::searchMultiCity);
 
+        // Search airports by city name (partial, case-insensitive)
+        // Example: /api/airports/search?city=london
+        app.get("/api/airports/search", Server::searchAirportsByCity);
+
         // Step 5: Start the server
         app.start(port);
         System.out.println("Server started on port " + port);
@@ -99,6 +103,7 @@ public class Server {
         System.out.println("  GET /api/flights/search?from=XXX&to=YYY");
         System.out.println("  GET /api/routes/cheapest?from=XXX");
         System.out.println("  GET /api/flights/multicity?from=XXX&destinations=YYY,ZZZ");
+        System.out.println("  GET /api/airports/search?city=XXX");
     }
 
     /**
@@ -170,6 +175,38 @@ public class Server {
         }
 
         // ctx.json() converts the List to JSON and sends it as the response
+        ctx.json(result);
+    }
+
+    /**
+     * GET /api/airports/search?city=XXX
+     * Returns airports whose city matches the query (case-insensitive, partial match).
+     * Returns an empty array if no airports match.
+     */
+    private static void searchAirportsByCity(Context ctx) {
+        String city = ctx.queryParam("city");
+
+        if (city == null || city.isBlank()) {
+            ctx.status(400).json(Map.of("error", "Missing or blank 'city' parameter"));
+            return;
+        }
+
+        Airport[] airports = airportStore.searchByCity(city);
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Airport airport : airports) {
+            Map<String, Object> airportData = new HashMap<>();
+            airportData.put("code", airport.getCode());
+            airportData.put("name", airport.getName());
+            airportData.put("latitude", airport.getLat());
+            airportData.put("longitude", airport.getLon());
+            airportData.put("elevation", airport.getElevation());
+            airportData.put("runwayLengthFt", airport.getRunwayLengthFt());
+            airportData.put("city", airport.getCity());
+            airportData.put("country", airport.getCountry());
+            result.add(airportData);
+        }
+
         ctx.json(result);
     }
 
