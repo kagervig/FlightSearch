@@ -422,7 +422,7 @@ public class Server {
             return;
         }
 
-        MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, new FlightStore(DatabaseManager.getDataSource(), airportStore));
+        MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, flightIndex);
         ArrayList<Route> validRoutes = multiCitySearch.search(from, destinations);
 
         if (validRoutes.isEmpty()) {

@@ -32,6 +32,11 @@ public class MultiCitySearch {
         this.flightIndex = FlightGenerator.flightMapper(flightList);
     }
 
+    public MultiCitySearch(AirportStore airportStore, HashMap<String, ArrayList<Flight>> flightIndex) {
+        this.airportStore = airportStore;
+        this.flightIndex = flightIndex;
+    }
+
     /**
      * Searches for all valid multi-city routes, sorted by cheapest total price.
      *
