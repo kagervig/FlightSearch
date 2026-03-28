@@ -75,7 +75,7 @@ public class MultiCitySearch {
     public static void main(String[] args) {
         DatabaseManager.initialize();
         AirportStore airportStore = new AirportStore(DatabaseManager.getDataSource());
-        FlightStore flightStore = new FlightStore(DatabaseManager.getDataSource());
+        FlightStore flightStore = new FlightStore(DatabaseManager.getDataSource(), airportStore);
         MultiCitySearch mcs = new MultiCitySearch(airportStore, flightStore);
 
         Scanner scnr = new Scanner(System.in);

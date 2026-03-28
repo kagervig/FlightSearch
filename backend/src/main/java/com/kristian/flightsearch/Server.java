@@ -127,7 +127,7 @@ public class Server {
 
         flightNetwork = FlightGraph.initalizeFlightGraph(airports);
 
-        flightList = new FlightStore(DatabaseManager.getDataSource()).readFlights();
+        flightList = new FlightStore(DatabaseManager.getDataSource(), airportStore).readFlights();
 
         // Create an index of flights by route (e.g., "JFK-LAX" -> [flight1, flight2, ...])
         // This makes searching for flights between two airports O(1) instead of O(n)
@@ -422,7 +422,7 @@ public class Server {
             return;
         }
 
-        MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, new FlightStore(DatabaseManager.getDataSource()));
+        MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, new FlightStore(DatabaseManager.getDataSource(), airportStore));
         ArrayList<Route> validRoutes = multiCitySearch.search(from, destinations);
 
         if (validRoutes.isEmpty()) {
