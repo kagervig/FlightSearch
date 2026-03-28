@@ -22,7 +22,8 @@ class FlightStoreTest {
     static void setUpDatabase() {
         try {
             DatabaseManager.initialize();
-            flightStore = new FlightStore(DatabaseManager.getDataSource());
+            AirportStore airportStore = new AirportStore(DatabaseManager.getDataSource());
+            flightStore = new FlightStore(DatabaseManager.getDataSource(), airportStore);
             dbAvailable = true;
         } catch (Exception e) {
             dbAvailable = false;
