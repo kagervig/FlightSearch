@@ -24,9 +24,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import com.kristian.flightsearch.datagenerator.AirportFileReader;
 import com.kristian.flightsearch.datagenerator.FlightGenerator;
-import com.kristian.flightsearch.datagenerator.FlightReader;
+import com.kristian.flightsearch.db.AirportStore;
 import com.kristian.flightsearch.db.DatabaseManager;
 import com.kristian.flightsearch.db.FlightStore;
 import com.kristian.flightsearch.flightgraph.AirportVertex;
@@ -46,7 +45,7 @@ public class Server {
     // requests
     // This is efficient because we don't reload data for every request
     private static FlightGraph flightNetwork; // Graph structure: airports connected by flights
-    private static AirportFileReader fileReader; // Provides airport lookup by code
+    private static AirportStore airportStore; // Provides airport lookup by code
     private static HashMap<String, Flight> flightList; // All flights indexed by flight number
     private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFK-LAX")
 
@@ -111,22 +110,18 @@ public class Server {
         // Connect to database and run migrations
         DatabaseManager.initialize();
 
-        //REMOVE THIS once the airport table exists in DB
-        fileReader = new AirportFileReader("609airports.txt");
-        Airport[] airports = fileReader.getAirports();
+        airportStore = new AirportStore(DatabaseManager.getDataSource());
 
-        FlightStore flightStore = new FlightStore(DatabaseManager.getDataSource());
-
-        // Seed from flights.txt on first run, then read from database from that point on
-        if (DatabaseManager.isFlightsTableEmpty()) {
-            HashMap<String, Flight> seedData = FlightReader.readFlights("flights.txt", airports);
-            flightStore.seedFlights(seedData);
+        if (!DatabaseManager.areNewTablesPopulated()) {
+            System.out.println("WARNING: Database tables are empty. Run backend/scripts/seed_database.sh to load data.");
+            System.exit(1);
         }
 
-        FlightGraph.initalizeFlightGraph(airports, flightNetwork);
-        //initializes the graph of flights with the airports list and a flightgraph object
+        Airport[] airports = airportStore.getAirports();
 
-        flightList = flightStore.readFlights(airports);
+        flightNetwork = FlightGraph.initalizeFlightGraph(airports);
+
+        flightList = new FlightStore(DatabaseManager.getDataSource()).readFlights();
 
         // Create an index of flights by route (e.g., "JFK-LAX" -> [flight1, flight2, ...])
         // This makes searching for flights between two airports O(1) instead of O(n)
@@ -135,7 +130,6 @@ public class Server {
         // Add flights as edges in the graph
         // Each flight becomes an edge connecting two airport vertices
         FlightGraph.addFlightEdges(flightNetwork, flightIndex);
-        
 
         System.out.println("Loaded " + airports.length + " airports and " + flightList.size() + " flights");
     }
@@ -156,7 +150,7 @@ public class Server {
      * ]
      */
     private static void getAirports(Context ctx) {
-        Airport[] airports = fileReader.getAirports();
+        Airport[] airports = airportStore.getAirports();
 
         // Convert Airport objects to Maps for JSON serialization
         // We do this manually to control exactly what fields are included
@@ -168,7 +162,7 @@ public class Server {
             airportData.put("latitude", airport.getLat());
             airportData.put("longitude", airport.getLon());
             airportData.put("elevation", airport.getElevation());
-            airportData.put("runway length", airport.getRunwayLength());
+            airportData.put("runwayLengthFt", airport.getRunwayLengthFt());
             airportData.put("city", airport.getCity());
             airportData.put("country", airport.getCountry());
             result.add(airportData);
@@ -212,11 +206,11 @@ public class Server {
         to = to.toUpperCase();
 
         // Validate that the airport codes exist in our data
-        if (!fileReader.isValidAirportCode(from)) {
+        if (!airportStore.isValidAirportCode(from)) {
             ctx.status(400).json(Map.of("error", "Invalid origin airport code: " + from));
             return;
         }
-        if (!fileReader.isValidAirportCode(to)) {
+        if (!airportStore.isValidAirportCode(to)) {
             ctx.status(400).json(Map.of("error", "Invalid destination airport code: " + to));
             return;
         }
@@ -290,7 +284,7 @@ public class Server {
 
         from = from.toUpperCase();
 
-        if (!fileReader.isValidAirportCode(from)) {
+        if (!airportStore.isValidAirportCode(from)) {
             ctx.status(400).json(Map.of("error", "Invalid airport code: " + from));
             return;
         }
@@ -344,7 +338,7 @@ public class Server {
             ctx.status(400).json(Map.of("error", "Please enter a destination airport"));
             return;
         }
-        if (!fileReader.isValidAirportCode(from)) {
+        if (!airportStore.isValidAirportCode(from)) {
             ctx.status(400).json(Map.of("error", "Airport not supported: " + from));
             return;
         }
@@ -354,7 +348,7 @@ public class Server {
         }
 
         for (String dest : destinations) {
-            if (!fileReader.isValidAirportCode(dest)) {
+            if (!airportStore.isValidAirportCode(dest)) {
                 ctx.status(400).json(Map.of("error", "Airport not supported: " + dest));
                 return;
             }

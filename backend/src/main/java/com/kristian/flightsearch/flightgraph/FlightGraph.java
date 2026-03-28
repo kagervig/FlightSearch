@@ -110,17 +110,19 @@ public class FlightGraph {
         }
     }
 
-    public static void initalizeFlightGraph(Airport[] airports, FlightGraph flightNetwork){
+    public static FlightGraph initalizeFlightGraph(Airport[] airports){
         System.out.println("Initializing flight data...");
 
         // Create an empty weighted, directed graph
         // Weighted = edges have values (price, duration)
         // Directed = JFK->LAX is different from LAX->JFK
-        flightNetwork = new FlightGraph(true, true);
+        FlightGraph flightNetwork = new FlightGraph(true, true);
 
         for (Airport a : airports) {
             flightNetwork.addVertex(a);
         }
+
+        return flightNetwork;
     }
 }
 
