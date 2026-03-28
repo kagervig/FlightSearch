@@ -562,7 +562,7 @@ function AirportAutocomplete({
       } catch {
         setSuggestions([]);
       }
-    }, 300);
+    }, 1000);
   };
 
   const handleSelect = (airport: AirportSuggestion) => {

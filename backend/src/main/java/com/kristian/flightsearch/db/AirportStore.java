@@ -47,14 +47,24 @@ public class AirportStore {
      * Returns airports whose city matches the given name (case-insensitive, partial match).
      */
     public Airport[] searchByCity(String cityName) {
+        // LHR and LGW are ordered first, then exact IATA matches, then exact city matches, then prefix matches
         String sql = "SELECT airport_id, iata_code, icao_code, name, city, country, latitude, longitude, "
                 + "utc_offset, timezone, elevation_ft, max_runway_length_ft "
-                + "FROM airports WHERE city ILIKE ?";
+                + "FROM airports WHERE (city ILIKE ? OR iata_code ILIKE ?) "
+                + "ORDER BY CASE "
+                + "WHEN iata_code = 'LHR' THEN 0 "
+                + "WHEN iata_code = 'LGW' THEN 1 "
+                + "WHEN iata_code ILIKE ? THEN 2 "
+                + "WHEN city ILIKE ? THEN 3 "
+                + "ELSE 4 END, name";
 
         ArrayList<Airport> results = new ArrayList<>();
         try (Connection conn = dataSource.getConnection();
                 PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, "%" + cityName + "%");
+            pstmt.setString(1, cityName + "%");
+            pstmt.setString(2, cityName + "%");
+            pstmt.setString(3, cityName);
+            pstmt.setString(4, cityName);
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
                     results.add(mapRow(rs));

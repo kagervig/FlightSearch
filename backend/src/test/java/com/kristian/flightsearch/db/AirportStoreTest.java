@@ -56,4 +56,34 @@ class AirportStoreTest {
     void testIsValidAirportCodeNull() {
         assertFalse(airportStore.isValidAirportCode(null));
     }
+
+    @Test
+    @DisplayName("searchByCity() returns LHR first and LGW second for 'london'")
+    void testSearchByCityLondonOrdering() {
+        Airport[] results = airportStore.searchByCity("london");
+        assertTrue(results.length >= 2, "Expected at least 2 results for 'london'");
+        assertEquals("LHR", results[0].getCode(), "First result should be LHR");
+        assertEquals("LGW", results[1].getCode(), "Second result should be LGW");
+    }
+
+    @Test
+    @DisplayName("searchByCity() finds airports by IATA code prefix")
+    void testSearchByCityIataCode() {
+        Airport[] results = airportStore.searchByCity("MUC");
+        assertTrue(results.length > 0, "Expected results for 'MUC'");
+        assertEquals("MUC", results[0].getCode(), "First result should be MUC");
+    }
+
+    @Test
+    @DisplayName("searchByCity() does not return cities that only contain the query string")
+    void testSearchByCityStartsWithOnly() {
+        // 'MUC' should not return Temuco (city starts with 'Tem', not 'MUC')
+        Airport[] results = airportStore.searchByCity("MUC");
+        for (Airport a : results) {
+            assertTrue(
+                a.getCity().toUpperCase().startsWith("MUC") || a.getCode().toUpperCase().startsWith("MUC"),
+                "Result " + a.getCode() + " (" + a.getCity() + ") should start with 'MUC'"
+            );
+        }
+    }
 }
