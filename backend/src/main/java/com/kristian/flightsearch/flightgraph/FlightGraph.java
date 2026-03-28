@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.time.Duration;
 
 import com.kristian.flightsearch.models.Airport;
+import com.kristian.flightsearch.models.Flight;
 
 public class FlightGraph {
     private ArrayList<AirportVertex> vertices;
@@ -94,6 +95,32 @@ public class FlightGraph {
 
         flightNetwork.print();
 
+    }
+    public static void addFlightEdges(FlightGraph flightNetwork, HashMap<String, ArrayList<Flight>> flightIndex){
+        for (ArrayList<Flight> flights : flightIndex.values()) {
+            for (Flight f : flights) {
+                AirportVertex origin = flightNetwork.getVertex(f.getOrigin().getCode());
+                AirportVertex dest = flightNetwork.getVertex(f.getDestination().getCode());
+
+                if (origin != null && dest != null) {
+                    // Edge has: price (weight), duration, and flight number
+                    flightNetwork.addEdge(origin, dest, f.getPrice(), f.getDuration(), f.getFlightNumber());
+                }
+            }
+        }
+    }
+
+    public static void initalizeFlightGraph(Airport[] airports, FlightGraph flightNetwork){
+        System.out.println("Initializing flight data...");
+
+        // Create an empty weighted, directed graph
+        // Weighted = edges have values (price, duration)
+        // Directed = JFK->LAX is different from LAX->JFK
+        flightNetwork = new FlightGraph(true, true);
+
+        for (Airport a : airports) {
+            flightNetwork.addVertex(a);
+        }
     }
 }
 
