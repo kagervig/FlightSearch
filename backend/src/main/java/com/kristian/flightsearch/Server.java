@@ -123,7 +123,8 @@ public class Server {
             flightStore.seedFlights(seedData);
         }
 
-        initalizeFlightGraph(airports);
+        FlightGraph.initalizeFlightGraph(airports, flightNetwork);
+        //initializes the graph of flights with the airports list and a flightgraph object
 
         flightList = flightStore.readFlights(airports);
 
@@ -133,33 +134,14 @@ public class Server {
 
         // Add flights as edges in the graph
         // Each flight becomes an edge connecting two airport vertices
-        for (ArrayList<Flight> flights : flightIndex.values()) {
-            for (Flight f : flights) {
-                AirportVertex origin = flightNetwork.getVertex(f.getOrigin().getCode());
-                AirportVertex dest = flightNetwork.getVertex(f.getDestination().getCode());
-
-                if (origin != null && dest != null) {
-                    // Edge has: price (weight), duration, and flight number
-                    flightNetwork.addEdge(origin, dest, f.getPrice(), f.getDuration(), f.getFlightNumber());
-                }
-            }
-        }
+        FlightGraph.addFlightEdges(flightNetwork, flightIndex);
+        
 
         System.out.println("Loaded " + airports.length + " airports and " + flightList.size() + " flights");
     }
 
-    public static void initalizeFlightGraph(Airport[] airports){
-            System.out.println("Initializing flight data...");
-
-            // Create an empty weighted, directed graph
-            // Weighted = edges have values (price, duration)
-            // Directed = JFK->LAX is different from LAX->JFK
-            flightNetwork = new FlightGraph(true, true);
-
-            for (Airport a : airports) {
-                flightNetwork.addVertex(a);
-            }
-        }
+    //MOVE THIS TO FLIGHTGRAPH
+    
 
     /**
      * GET /api/airports
