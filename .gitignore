@@ -24,6 +24,9 @@ frontend/next-env.d.ts
 
 # IDE (keeping .vscode for shared launch configs)
 
+# Large data files
+backend/data/flights.csv
+
 # Debug logs
 npm-debug.log*
 yarn-debug.log*
