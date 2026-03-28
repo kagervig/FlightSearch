@@ -365,7 +365,8 @@ public class Server {
             return;
         }
 
-        ArrayList<Route> validRoutes = MultiCitySearch.search(from, destinations);
+        MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, new FlightStore(DatabaseManager.getDataSource()));
+        ArrayList<Route> validRoutes = multiCitySearch.search(from, destinations);
 
         if (validRoutes.isEmpty()) {
             ctx.json(Map.of("from", from, "routes", new ArrayList<>()));
