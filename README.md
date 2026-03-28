@@ -80,34 +80,50 @@ psql flightsearch -f backend/src/main/resources/db/001_create_flights.sql
 
 #### Schema
 
-The `flights` table:
+The full schema is defined in `backend/data/schema.sql`. Tables: `planes`, `airports`, `airlines`, `flights`. See the schema file for full column definitions.
 
-| Column | Type | Notes |
-|---|---|---|
-| id | UUID | Primary key, auto-generated |
-| scheduled_departure | TIMESTAMP | |
-| scheduled_arrival | TIMESTAMP | Next day if arrival < departure |
-| flight_number | VARCHAR | |
-| origin | VARCHAR | Airport code |
-| destination | VARCHAR | Airport code |
-| price | INTEGER | |
-| currency | VARCHAR | Defaults to USD |
-| duration | INTEGER | Minutes |
+Migrations are in `backend/src/main/resources/db/` and run automatically on startup.
 
-Migrations are in `backend/src/main/resources/db/` and are numbered sequentially (e.g. `001_create_flights.sql`).
+#### Seeding from CSV
 
-#### Seeding
+Load schema and CSV data:
+```bash
+./backend/scripts/seed_database.sh "<connection-string>"
+```
 
-On startup, the server automatically seeds the flights table from `flights.txt` if the table is empty. This runs on both local and Railway deployments — no manual steps required.
+Drop all tables (to reset before re-seeding):
+```bash
+./backend/scripts/drop_tables.sh "<connection-string>"
+```
 
-#### Production (Railway)
+#### Useful Database Commands
 
-Set the `DATABASE_URL` environment variable in Railway. The server reads this on startup and connects automatically. The format Railway provides (`postgresql://...`) is handled automatically.
+| Task | Command |
+|------|---------|
+| List local databases | `psql -l` |
+| Connect to local db | `psql flightsearch` |
+| List tables | `psql flightsearch -c "\dt"` |
+| Count flights (local) | `psql flightsearch -c "SELECT COUNT(*) FROM flights;"` |
+| Count flights (script) | `./backend/scripts/count_flights.sh "<connection-string>"` |
+| Sample rows | `psql flightsearch -c "SELECT * FROM flights LIMIT 10;"` |
+| Backup database | `pg_dump "<connection-string>" -f backup.sql` |
+| Restore from backup | `psql "<connection-string>" -f backup.sql` |
 
-#### Querying the Local Database
+#### Connecting to Render
+
+Use the external connection string from the Render dashboard (Database → Connect → External Connection String):
 
 ```bash
-psql flightsearch -c "SELECT * FROM flights LIMIT 10;"
+psql "postgresql://user:password@host:5432/dbname?sslmode=require" -c "\dt"
+```
+
+**SSL troubleshooting:** If you get SSL handshake errors, check that psql and libpq are the same version:
+```bash
+psql --version
+brew reinstall libpq
+brew unlink libpq
+brew install postgresql@17
+brew link --force postgresql@17
 ```
 
 ### API Endpoints

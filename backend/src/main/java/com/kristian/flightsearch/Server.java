@@ -20,13 +20,13 @@ package com.kristian.flightsearch;
  */
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import com.kristian.flightsearch.datagenerator.AirportFileReader;
 import com.kristian.flightsearch.datagenerator.FlightGenerator;
-import com.kristian.flightsearch.datagenerator.FlightReader;
+import com.kristian.flightsearch.db.AirportStore;
 import com.kristian.flightsearch.db.DatabaseManager;
 import com.kristian.flightsearch.db.FlightStore;
 import com.kristian.flightsearch.flightgraph.AirportVertex;
@@ -46,7 +46,7 @@ public class Server {
     // requests
     // This is efficient because we don't reload data for every request
     private static FlightGraph flightNetwork; // Graph structure: airports connected by flights
-    private static AirportFileReader fileReader; // Provides airport lookup by code
+    private static AirportStore airportStore; // Provides airport lookup by code
     private static HashMap<String, Flight> flightList; // All flights indexed by flight number
     private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFK-LAX")
 
@@ -90,6 +90,10 @@ public class Server {
         // Example: /api/flights/multicity?from=YYZ&destinations=JFK,LAX,FCO
         app.get("/api/flights/multicity", Server::searchMultiCity);
 
+        // Search airports by city name (partial, case-insensitive)
+        // Example: /api/airports/search?city=london
+        app.get("/api/airports/search", Server::searchAirportsByCity);
+
         // Step 5: Start the server
         app.start(port);
         System.out.println("Server started on port " + port);
@@ -99,6 +103,7 @@ public class Server {
         System.out.println("  GET /api/flights/search?from=XXX&to=YYY");
         System.out.println("  GET /api/routes/cheapest?from=XXX");
         System.out.println("  GET /api/flights/multicity?from=XXX&destinations=YYY,ZZZ");
+        System.out.println("  GET /api/airports/search?city=XXX");
     }
 
     /**
@@ -111,22 +116,18 @@ public class Server {
         // Connect to database and run migrations
         DatabaseManager.initialize();
 
-        //REMOVE THIS once the airport table exists in DB
-        fileReader = new AirportFileReader("609airports.txt");
-        Airport[] airports = fileReader.getAirports();
+        airportStore = new AirportStore(DatabaseManager.getDataSource());
 
-        FlightStore flightStore = new FlightStore(DatabaseManager.getDataSource());
-
-        // Seed from flights.txt on first run, then read from database from that point on
-        if (DatabaseManager.isFlightsTableEmpty()) {
-            HashMap<String, Flight> seedData = FlightReader.readFlights("flights.txt", airports);
-            flightStore.seedFlights(seedData);
+        if (!DatabaseManager.areNewTablesPopulated()) {
+            System.out.println("WARNING: Database tables are empty. Run backend/scripts/seed_database.sh to load data.");
+            System.exit(1);
         }
 
-        FlightGraph.initalizeFlightGraph(airports, flightNetwork);
-        //initializes the graph of flights with the airports list and a flightgraph object
+        Airport[] airports = airportStore.getAirports();
 
-        flightList = flightStore.readFlights(airports);
+        flightNetwork = FlightGraph.initalizeFlightGraph(airports);
+
+        flightList = new FlightStore(DatabaseManager.getDataSource()).readFlights();
 
         // Create an index of flights by route (e.g., "JFK-LAX" -> [flight1, flight2, ...])
         // This makes searching for flights between two airports O(1) instead of O(n)
@@ -135,7 +136,6 @@ public class Server {
         // Add flights as edges in the graph
         // Each flight becomes an edge connecting two airport vertices
         FlightGraph.addFlightEdges(flightNetwork, flightIndex);
-        
 
         System.out.println("Loaded " + airports.length + " airports and " + flightList.size() + " flights");
     }
@@ -156,7 +156,7 @@ public class Server {
      * ]
      */
     private static void getAirports(Context ctx) {
-        Airport[] airports = fileReader.getAirports();
+        Airport[] airports = airportStore.getAirports();
 
         // Convert Airport objects to Maps for JSON serialization
         // We do this manually to control exactly what fields are included
@@ -168,13 +168,45 @@ public class Server {
             airportData.put("latitude", airport.getLat());
             airportData.put("longitude", airport.getLon());
             airportData.put("elevation", airport.getElevation());
-            airportData.put("runway length", airport.getRunwayLength());
+            airportData.put("runwayLengthFt", airport.getRunwayLengthFt());
             airportData.put("city", airport.getCity());
             airportData.put("country", airport.getCountry());
             result.add(airportData);
         }
 
         // ctx.json() converts the List to JSON and sends it as the response
+        ctx.json(result);
+    }
+
+    /**
+     * GET /api/airports/search?city=XXX
+     * Returns airports whose city matches the query (case-insensitive, partial match).
+     * Returns an empty array if no airports match.
+     */
+    private static void searchAirportsByCity(Context ctx) {
+        String city = ctx.queryParam("city");
+
+        if (city == null || city.isBlank()) {
+            ctx.status(400).json(Map.of("error", "Missing or blank 'city' parameter"));
+            return;
+        }
+
+        Airport[] airports = airportStore.searchByCity(city);
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Airport airport : airports) {
+            Map<String, Object> airportData = new HashMap<>();
+            airportData.put("code", airport.getCode());
+            airportData.put("name", airport.getName());
+            airportData.put("latitude", airport.getLat());
+            airportData.put("longitude", airport.getLon());
+            airportData.put("elevation", airport.getElevation());
+            airportData.put("runwayLengthFt", airport.getRunwayLengthFt());
+            airportData.put("city", airport.getCity());
+            airportData.put("country", airport.getCountry());
+            result.add(airportData);
+        }
+
         ctx.json(result);
     }
 
@@ -200,6 +232,7 @@ public class Server {
         // Get query parameters from URL
         String from = ctx.queryParam("from");
         String to = ctx.queryParam("to");
+        String sortBy = ctx.queryParam("sortBy");
 
         // Validate that both parameters were provided
         if (from == null || to == null) {
@@ -212,11 +245,11 @@ public class Server {
         to = to.toUpperCase();
 
         // Validate that the airport codes exist in our data
-        if (!fileReader.isValidAirportCode(from)) {
+        if (!airportStore.isValidAirportCode(from)) {
             ctx.status(400).json(Map.of("error", "Invalid origin airport code: " + from));
             return;
         }
-        if (!fileReader.isValidAirportCode(to)) {
+        if (!airportStore.isValidAirportCode(to)) {
             ctx.status(400).json(Map.of("error", "Invalid destination airport code: " + to));
             return;
         }
@@ -234,6 +267,12 @@ public class Server {
                     "flights", new ArrayList<>(),
                     "message", "No direct flights found"));
             return;
+        }
+
+        if ("duration".equalsIgnoreCase(sortBy)) {
+            flights.sort(Comparator.comparingLong(f -> f.getDuration().toMinutes()));
+        } else {
+            flights.sort(Comparator.comparingInt(Flight::getPrice));
         }
 
         // Convert Flight objects to JSON-friendly Maps
@@ -282,6 +321,7 @@ public class Server {
      */
     private static void findCheapestRoutes(Context ctx) {
         String from = ctx.queryParam("from");
+        String sortBy = ctx.queryParam("sortBy");
 
         if (from == null) {
             ctx.status(400).json(Map.of("error", "Missing 'from' parameter"));
@@ -290,35 +330,46 @@ public class Server {
 
         from = from.toUpperCase();
 
-        if (!fileReader.isValidAirportCode(from)) {
+        if (!airportStore.isValidAirportCode(from)) {
             ctx.status(400).json(Map.of("error", "Invalid airport code: " + from));
             return;
         }
 
-        // Get the starting vertex for Dijkstra
         AirportVertex originVertex = flightNetwork.getVertex(from);
 
-        // Run Dijkstra's algorithm - returns two Maps:
-        // result[0] = Map<Airport, Integer> - cheapest price to reach each airport
-        // result[1] = Map<Airport, AirportVertex> - previous vertex in path (for
-        // reconstructing route)
-        Map[] result = Dijkstra.searchByPrice(flightNetwork, originVertex);
-
-        // We only need the distances (prices) for this endpoint
-        @SuppressWarnings("unchecked")
-        Map<Airport, Integer> distances = result[0];
-
-        // Convert to JSON-friendly format
-        // Filter out unreachable airports (price = MAX_VALUE) and the origin itself
-        // (price = 0)
         List<Map<String, Object>> routes = new ArrayList<>();
-        for (Map.Entry<Airport, Integer> entry : distances.entrySet()) {
-            if (entry.getValue() != null && entry.getValue() != Integer.MAX_VALUE) {
-                Map<String, Object> route = new HashMap<>();
-                route.put("destination", entry.getKey().getCode());
-                route.put("destinationName", entry.getKey().getName());
-                route.put("cheapestPrice", entry.getValue());
-                routes.add(route);
+
+        if ("duration".equalsIgnoreCase(sortBy)) {
+            @SuppressWarnings("unchecked")
+            Map<Airport, java.time.Duration> durations = Dijkstra.searchByDuration(flightNetwork, originVertex)[0];
+            for (Map.Entry<Airport, java.time.Duration> entry : durations.entrySet()) {
+                // Filter out unreachable airports (Duration.ofHours(99)) and origin (Duration.ZERO)
+                if (entry.getValue() != null && entry.getValue().toMinutes() > 0
+                        && entry.getValue().compareTo(java.time.Duration.ofHours(99)) < 0) {
+                    Map<String, Object> route = new HashMap<>();
+                    route.put("destination", entry.getKey().getCode());
+                    route.put("destinationName", entry.getKey().getName());
+                    route.put("cheapestDurationMinutes", entry.getValue().toMinutes());
+                    routes.add(route);
+                }
+            }
+        } else {
+            // Run Dijkstra's algorithm - returns two Maps:
+            // result[0] = Map<Airport, Integer> - cheapest price to reach each airport
+            // result[1] = Map<Airport, AirportVertex> - previous vertex in path (for
+            // reconstructing route)
+            @SuppressWarnings("unchecked")
+            Map<Airport, Integer> distances = Dijkstra.searchByPrice(flightNetwork, originVertex)[0];
+            // Filter out unreachable airports (price = MAX_VALUE) and the origin itself
+            // (price = 0)
+            for (Map.Entry<Airport, Integer> entry : distances.entrySet()) {
+                if (entry.getValue() != null && entry.getValue() != Integer.MAX_VALUE) {
+                    Map<String, Object> route = new HashMap<>();
+                    route.put("destination", entry.getKey().getCode());
+                    route.put("destinationName", entry.getKey().getName());
+                    route.put("cheapestPrice", entry.getValue());
+                    routes.add(route);
+                }
             }
         }
 
@@ -344,7 +395,7 @@ public class Server {
             ctx.status(400).json(Map.of("error", "Please enter a destination airport"));
             return;
         }
-        if (!fileReader.isValidAirportCode(from)) {
+        if (!airportStore.isValidAirportCode(from)) {
             ctx.status(400).json(Map.of("error", "Airport not supported: " + from));
             return;
         }
@@ -354,7 +405,7 @@ public class Server {
         }
 
         for (String dest : destinations) {
-            if (!fileReader.isValidAirportCode(dest)) {
+            if (!airportStore.isValidAirportCode(dest)) {
                 ctx.status(400).json(Map.of("error", "Airport not supported: " + dest));
                 return;
             }
@@ -371,7 +422,8 @@ public class Server {
             return;
         }
 
-        ArrayList<Route> validRoutes = MultiCitySearch.search(from, destinations);
+        MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, new FlightStore(DatabaseManager.getDataSource()));
+        ArrayList<Route> validRoutes = multiCitySearch.search(from, destinations);
 
         if (validRoutes.isEmpty()) {
             ctx.json(Map.of("from", from, "routes", new ArrayList<>()));

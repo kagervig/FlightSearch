@@ -12,22 +12,25 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Scanner;
 
-import com.kristian.flightsearch.datagenerator.AirportFileReader;
 import com.kristian.flightsearch.datagenerator.FlightGenerator;
-import com.kristian.flightsearch.datagenerator.FlightReader;
+import com.kristian.flightsearch.db.AirportStore;
 import com.kristian.flightsearch.db.DatabaseManager;
+import com.kristian.flightsearch.db.FlightStore;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
 import com.kristian.flightsearch.models.Route;
 import com.kristian.flightsearch.utils.FlightPrinter;
 
 public class MultiCitySearch {
-    private static final AirportFileReader fileReader = new AirportFileReader("609airports.txt");
-    private static final Airport[] airports = fileReader.getAirports();
-    private static final HashMap<String, Flight> flightList = FlightReader.readFlights("flights.txt", airports);
 
-    // TODO: Don't set this as a final static variable
-    private static final HashMap<String, ArrayList<Flight>> flightIndex = FlightGenerator.flightMapper(flightList);
+    private final AirportStore airportStore;
+    final HashMap<String, ArrayList<Flight>> flightIndex;
+
+    public MultiCitySearch(AirportStore airportStore, FlightStore flightStore) {
+        this.airportStore = airportStore;
+        HashMap<String, Flight> flightList = flightStore.readFlights();
+        this.flightIndex = FlightGenerator.flightMapper(flightList);
+    }
 
     /**
      * Searches for all valid multi-city routes, sorted by cheapest total price.
@@ -36,7 +39,7 @@ public class MultiCitySearch {
      * @param destinations Array of destination airport codes to visit
      * @return Sorted list of valid routes (cheapest first), empty if none found
      */
-    public static ArrayList<Route> search(String homeAirport, String[] destinations) {
+    public ArrayList<Route> search(String homeAirport, String[] destinations) {
         ArrayList<String[]> combinations = flightCombinations(destinations, homeAirport);
 
         // TODO: Generate the flight Index with the database 
@@ -70,6 +73,11 @@ public class MultiCitySearch {
     }
 
     public static void main(String[] args) {
+        DatabaseManager.initialize();
+        AirportStore airportStore = new AirportStore(DatabaseManager.getDataSource());
+        FlightStore flightStore = new FlightStore(DatabaseManager.getDataSource());
+        MultiCitySearch mcs = new MultiCitySearch(airportStore, flightStore);
+
         Scanner scnr = new Scanner(System.in);
         String homeAirport;
         int numCitiesToVisit = 0;
@@ -95,7 +103,7 @@ public class MultiCitySearch {
         }
 
         String[] airportsToVisit = new String[numCitiesToVisit];
-        airportsToVisit = captureAirports(numCitiesToVisit, homeAirport); // capture all airports to visit from user
+        airportsToVisit = mcs.captureAirports(numCitiesToVisit, homeAirport); // capture all airports to visit from user
 
         ArrayList<String[]> flightCombinations = new ArrayList<>(); // stores all possible route combinations
         flightCombinations = flightCombinations(airportsToVisit, homeAirport); // permutes all possible route
@@ -114,7 +122,7 @@ public class MultiCitySearch {
         System.out.println("Total permuted routes: " + flightCombinations.size());
 
         for (int i = flightCombinations.size() - 1; i >= 0; i--) {
-            if (!hasFlightsForAllLegs(flightCombinations.get(i), flightIndex)) {
+            if (!mcs.hasFlightsForAllLegs(flightCombinations.get(i), mcs.flightIndex)) {
                 flightCombinations.remove(i);
             }
         }
@@ -128,7 +136,7 @@ public class MultiCitySearch {
                                                                            // may be multiple flight options per leg,
                                                                            // hence ArrL<ArrL<Flight>>
             for (int j = 0; j < route.length - 1; j++) { // iterate through each leg of the route
-                ArrayList<Flight> legFlights = FlightGenerator.flightRouteSearch(flightIndex, route[j], route[j + 1]);
+                ArrayList<Flight> legFlights = FlightGenerator.flightRouteSearch(mcs.flightIndex, route[j], route[j + 1]);
                 // search flight index for routes between these airports
                 if (legFlights != null) {
                     routeFlights.add(legFlights);
@@ -138,7 +146,6 @@ public class MultiCitySearch {
             }
             validRoutes.add(new Route(route, routeFlights));
         }
-
 
         Route cheapestRoute = findCheapestRoute(validRoutes);
         System.out.println("Total valid routes: " + flightCombinations.size());
@@ -210,12 +217,12 @@ public class MultiCitySearch {
     }
 
     // builds a flightIndex from the database containing only flights between the airports in flightRoute
-    public static HashMap<String, ArrayList<Flight>> buildFlightIndexForRoute(String[] flightRoute) {
+    public HashMap<String, ArrayList<Flight>> buildFlightIndexForRoute(String[] flightRoute) {
         HashSet<String> uniqueAirports = new HashSet<>(Arrays.asList(flightRoute));
 
         // Build a lookup map limited to the airports we care about
         HashMap<String, Airport> airportMap = new HashMap<>();
-        for (Airport a : airports) {
+        for (Airport a : airportStore.getAirports()) {
             if (uniqueAirports.contains(a.getCode())) {
                 airportMap.put(a.getCode(), a);
             }
@@ -258,7 +265,7 @@ public class MultiCitySearch {
     }
 
     // check if a flight exists for each leg of the route by querying the database
-    public static boolean hasFlightsForAllLegsDatabase(String[] flightRoute) {
+    public boolean hasFlightsForAllLegsDatabase(String[] flightRoute) {
         String sql = "SELECT COUNT(*) FROM flights WHERE origin = ? AND destination = ?";
         try (Connection conn = DatabaseManager.getDataSource().getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -326,7 +333,7 @@ public class MultiCitySearch {
      * @param citiesToVisit The number of cities to visit.
      * @return An array of Strings containing the entered airport codes.
      */
-    public static String[] captureAirports(int citiesToVisit, String homeAirport) {
+    public String[] captureAirports(int citiesToVisit, String homeAirport) {
         Scanner scanner = new Scanner(System.in);
         String[] airports = new String[citiesToVisit];
         String choice = "";
@@ -342,7 +349,7 @@ public class MultiCitySearch {
                     System.out.println("Airport code invalid, try again.");
                     continue;
                 }
-                if (!fileReader.isValidAirportCode(choice)) {
+                if (!airportStore.isValidAirportCode(choice)) {
                     System.out.println("Please pick a supported airport");
                     continue;
                 }

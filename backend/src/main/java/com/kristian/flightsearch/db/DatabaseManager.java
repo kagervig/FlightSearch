@@ -81,8 +81,7 @@ public class DatabaseManager {
     }
     
     /*
-    * Creates tables in database if they do not already exist. Reads from the
-    * migrations file: db/001_create_flights.sql
+    * Runs all migrations in order. Each migration file is applied once on startup.
     */
     private static void runMigrations() {
         
@@ -102,6 +101,22 @@ public class DatabaseManager {
                 System.out.println("Migration failed (" + migrationFile + "): " + e.getMessage());
             }
         }
+    }
+
+    /*
+    * Returns true if the airports table has been seeded with data.
+    */
+    public static boolean areNewTablesPopulated() {
+        try (Connection conn = dataSource.getConnection();
+                Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM airports")) {
+            if (rs.next()) {
+                return rs.getInt(1) > 0;
+            }
+        } catch (Exception e) {
+            System.out.println("Error checking airports table: " + e.getMessage());
+        }
+        return false;
     }
 
     /*
