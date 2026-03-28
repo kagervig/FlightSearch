@@ -20,6 +20,7 @@ package com.kristian.flightsearch;
  */
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -194,6 +195,7 @@ public class Server {
         // Get query parameters from URL
         String from = ctx.queryParam("from");
         String to = ctx.queryParam("to");
+        String sortBy = ctx.queryParam("sortBy");
 
         // Validate that both parameters were provided
         if (from == null || to == null) {
@@ -228,6 +230,12 @@ public class Server {
                     "flights", new ArrayList<>(),
                     "message", "No direct flights found"));
             return;
+        }
+
+        if ("duration".equalsIgnoreCase(sortBy)) {
+            flights.sort(Comparator.comparingLong(f -> f.getDuration().toMinutes()));
+        } else {
+            flights.sort(Comparator.comparingInt(Flight::getPrice));
         }
 
         // Convert Flight objects to JSON-friendly Maps
@@ -276,6 +284,7 @@ public class Server {
      */
     private static void findCheapestRoutes(Context ctx) {
         String from = ctx.queryParam("from");
+        String sortBy = ctx.queryParam("sortBy");
 
         if (from == null) {
             ctx.status(400).json(Map.of("error", "Missing 'from' parameter"));
@@ -289,30 +298,41 @@ public class Server {
             return;
         }
 
-        // Get the starting vertex for Dijkstra
         AirportVertex originVertex = flightNetwork.getVertex(from);
 
-        // Run Dijkstra's algorithm - returns two Maps:
-        // result[0] = Map<Airport, Integer> - cheapest price to reach each airport
-        // result[1] = Map<Airport, AirportVertex> - previous vertex in path (for
-        // reconstructing route)
-        Map[] result = Dijkstra.searchByPrice(flightNetwork, originVertex);
-
-        // We only need the distances (prices) for this endpoint
-        @SuppressWarnings("unchecked")
-        Map<Airport, Integer> distances = result[0];
-
-        // Convert to JSON-friendly format
-        // Filter out unreachable airports (price = MAX_VALUE) and the origin itself
-        // (price = 0)
         List<Map<String, Object>> routes = new ArrayList<>();
-        for (Map.Entry<Airport, Integer> entry : distances.entrySet()) {
-            if (entry.getValue() != null && entry.getValue() != Integer.MAX_VALUE) {
-                Map<String, Object> route = new HashMap<>();
-                route.put("destination", entry.getKey().getCode());
-                route.put("destinationName", entry.getKey().getName());
-                route.put("cheapestPrice", entry.getValue());
-                routes.add(route);
+
+        if ("duration".equalsIgnoreCase(sortBy)) {
+            @SuppressWarnings("unchecked")
+            Map<Airport, java.time.Duration> durations = Dijkstra.searchByDuration(flightNetwork, originVertex)[0];
+            for (Map.Entry<Airport, java.time.Duration> entry : durations.entrySet()) {
+                // Filter out unreachable airports (Duration.ofHours(99)) and origin (Duration.ZERO)
+                if (entry.getValue() != null && entry.getValue().toMinutes() > 0
+                        && entry.getValue().compareTo(java.time.Duration.ofHours(99)) < 0) {
+                    Map<String, Object> route = new HashMap<>();
+                    route.put("destination", entry.getKey().getCode());
+                    route.put("destinationName", entry.getKey().getName());
+                    route.put("cheapestDurationMinutes", entry.getValue().toMinutes());
+                    routes.add(route);
+                }
+            }
+        } else {
+            // Run Dijkstra's algorithm - returns two Maps:
+            // result[0] = Map<Airport, Integer> - cheapest price to reach each airport
+            // result[1] = Map<Airport, AirportVertex> - previous vertex in path (for
+            // reconstructing route)
+            @SuppressWarnings("unchecked")
+            Map<Airport, Integer> distances = Dijkstra.searchByPrice(flightNetwork, originVertex)[0];
+            // Filter out unreachable airports (price = MAX_VALUE) and the origin itself
+            // (price = 0)
+            for (Map.Entry<Airport, Integer> entry : distances.entrySet()) {
+                if (entry.getValue() != null && entry.getValue() != Integer.MAX_VALUE) {
+                    Map<String, Object> route = new HashMap<>();
+                    route.put("destination", entry.getKey().getCode());
+                    route.put("destinationName", entry.getKey().getName());
+                    route.put("cheapestPrice", entry.getValue());
+                    routes.add(route);
+                }
             }
         }
 
