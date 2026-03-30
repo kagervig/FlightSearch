@@ -94,4 +94,99 @@ class MultiCitySearchTest {
         assertEquals("LHR", airports[1]);
         assertEquals("JFK", airports[airports.length - 1]);
     }
+
+    @Test
+    @DisplayName("all routes in search results start and end at the home airport")
+    void searchRoutesStartAndEndAtHome() {
+        MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
+        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR", "CDG"});
+
+        for (Route route : routes) {
+            String[] airports = route.getAirports();
+            assertEquals("JFK", airports[0]);
+            assertEquals("JFK", airports[airports.length - 1]);
+        }
+    }
+
+    @Test
+    @DisplayName("flightCombinations with one destination returns exactly one route")
+    void flightCombinationsOneDestination() {
+        ArrayList<String[]> combinations = MultiCitySearch.flightCombinations(new String[]{"LHR"}, "JFK");
+        assertEquals(1, combinations.size());
+        assertArrayEquals(new String[]{"JFK", "LHR", "JFK"}, combinations.get(0));
+    }
+
+    @Test
+    @DisplayName("flightCombinations with two destinations returns 2 routes")
+    void flightCombinationsTwoDestinations() {
+        ArrayList<String[]> combinations = MultiCitySearch.flightCombinations(new String[]{"LHR", "CDG"}, "JFK");
+        assertEquals(2, combinations.size());
+    }
+
+    @Test
+    @DisplayName("flightCombinations with three destinations returns 6 routes")
+    void flightCombinationsThreeDestinations() {
+        ArrayList<String[]> combinations = MultiCitySearch.flightCombinations(new String[]{"LHR", "CDG", "AMS"}, "JFK");
+        assertEquals(6, combinations.size());
+    }
+
+    @Test
+    @DisplayName("flightCombinations routes all start and end at the home airport")
+    void flightCombinationsAllRoutesStartAndEndAtHome() {
+        ArrayList<String[]> combinations = MultiCitySearch.flightCombinations(new String[]{"LHR", "CDG"}, "JFK");
+        for (String[] route : combinations) {
+            assertEquals("JFK", route[0]);
+            assertEquals("JFK", route[route.length - 1]);
+        }
+    }
+
+    @Test
+    @DisplayName("flightCombinations routes each contain all destinations exactly once")
+    void flightCombinationsRoutesContainAllDestinations() {
+        String[] destinations = {"LHR", "CDG"};
+        ArrayList<String[]> combinations = MultiCitySearch.flightCombinations(destinations, "JFK");
+        for (String[] route : combinations) {
+            // route is [home, ...destinations..., home] so interior elements are the destinations
+            List<String> interior = new ArrayList<>();
+            for (int i = 1; i < route.length - 1; i++) {
+                interior.add(route[i]);
+            }
+            for (String dest : destinations) {
+                assertTrue(interior.contains(dest), "Route should contain destination " + dest);
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("hasFlightsForAllLegs returns true when every leg exists in the index")
+    void hasFlightsForAllLegsReturnsTrueWhenComplete() {
+        String[] route = {"JFK", "LHR", "CDG", "JFK"};
+        assertTrue(MultiCitySearch.hasFlightsForAllLegs(route, flightIndex));
+    }
+
+    @Test
+    @DisplayName("hasFlightsForAllLegs returns false when a leg is missing from the index")
+    void hasFlightsForAllLegsReturnsFalseWhenLegMissing() {
+        HashMap<String, ArrayList<Flight>> partial = new HashMap<>();
+        partial.put("JFKLHR", flightIndex.get("JFKLHR"));
+        // LHRCDG and CDGJFK are absent
+
+        String[] route = {"JFK", "LHR", "CDG", "JFK"};
+        assertFalse(MultiCitySearch.hasFlightsForAllLegs(route, partial));
+    }
+
+    @Test
+    @DisplayName("hasFlightsForAllLegs returns true for a single-leg route when the leg exists")
+    void hasFlightsForAllLegsReturnsTrueForSingleLeg() {
+        HashMap<String, ArrayList<Flight>> index = new HashMap<>();
+        index.put("JFKLHR", flightIndex.get("JFKLHR"));
+
+        assertTrue(MultiCitySearch.hasFlightsForAllLegs(new String[]{"JFK", "LHR"}, index));
+    }
+
+    @Test
+    @DisplayName("hasFlightsForAllLegs returns false for a single-leg route when the leg is absent")
+    void hasFlightsForAllLegsReturnsFalseForMissingSingleLeg() {
+        assertFalse(MultiCitySearch.hasFlightsForAllLegs(new String[]{"JFK", "AMS"}, flightIndex));
+    }
 }
