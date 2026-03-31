@@ -9,11 +9,15 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 
 import com.kristian.flightsearch.datagenerator.FlightGenerator;
 import com.kristian.flightsearch.db.AirportStore;
 import com.kristian.flightsearch.db.DatabaseManager;
 import com.kristian.flightsearch.db.FlightStore;
+import com.kristian.flightsearch.flightgraph.AirportVertex;
+import com.kristian.flightsearch.flightgraph.Dijkstra;
+import com.kristian.flightsearch.flightgraph.FlightGraph;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
 import com.kristian.flightsearch.models.Route;
@@ -44,6 +48,105 @@ public class MultiCitySearch {
         this.airportStore = airportStore;
         this.flightIndex = flightIndex;
     }
+
+
+
+    @SuppressWarnings("unchecked")
+    public static ArrayList<Route> dijkstraFlightSearch(String homeAirport, String[] destinations, FlightGraph flightNetwork, HashMap<String, ArrayList<Flight>> flightIndex) {
+        // Step 1: Generate all permutations of the destinations bookended by home
+        // e.g. home=YYZ, destinations=[JFK, LAX] -> [[YYZ,JFK,LAX,YYZ], [YYZ,LAX,JFK,YYZ]]
+        ArrayList<String[]> combinations = flightCombinations(destinations, homeAirport);
+
+        ArrayList<Route> validRoutes = new ArrayList<>();
+
+        // Step 2: Try to build a valid route for each permutation
+        for (String[] permutation : combinations) {
+            // expandedAirports will hold the full path including any layover airports
+            // e.g. if YYZ->JFK is only reachable via ORD: [YYZ, ORD, JFK, LAX, YYZ]
+            ArrayList<String> expandedAirports = new ArrayList<>();
+
+            // one entry per sub-leg (direct segment between two consecutive airports)
+            ArrayList<ArrayList<Flight>> flightsPerSubLeg = new ArrayList<>();
+
+            boolean routeValid = true;
+
+            // Step 3: Process each leg of the permutation (e.g. YYZ->JFK, JFK->LAX, LAX->YYZ)
+            for (int i = 0; i < permutation.length - 1; i++) {
+                String originCode = permutation[i];
+                String destCode = permutation[i + 1];
+
+                AirportVertex originVertex = flightNetwork.getVertex(originCode);
+                AirportVertex destVertex = flightNetwork.getVertex(destCode);
+
+                // Either airport is missing from the graph — leg can't be flown
+                if (originVertex == null || destVertex == null) {
+                    routeValid = false;
+                    break;
+                }
+
+                // Run Dijkstra once from this leg's origin
+                // result[0]: cheapest price from origin to every other airport
+                // result[1]: previous vertex for each airport (used to reconstruct the path)
+                Map[] dijkstraResult = Dijkstra.searchByPrice(flightNetwork, originVertex);
+                Map<Airport, Integer> prices = (Map<Airport, Integer>) dijkstraResult[0];
+                Map<Airport, AirportVertex> previous = (Map<Airport, AirportVertex>) dijkstraResult[1];
+
+                // If the destination price is MAX_VALUE, it's unreachable from this origin
+                Integer priceToDestination = prices.get(destVertex.getData());
+                if (priceToDestination == null || priceToDestination == Integer.MAX_VALUE) {
+                    routeValid = false;
+                    break;
+                }
+
+                // Reconstruct the path for this leg by walking backwards through the previous map
+                // e.g. dest=JFK, previous[JFK]=ORD, previous[ORD]=YYZ -> path=[YYZ, ORD, JFK]
+                ArrayList<String> legPath = new ArrayList<>();
+                Airport current = destVertex.getData();
+                while (current != null) {
+                    legPath.add(0, current.getCode()); // prepend so the path reads origin->dest
+                    AirportVertex prevVertex = previous.get(current);
+                    current = (prevVertex != null) ? prevVertex.getData() : null;
+                }
+
+                // Append this leg's path to the expanded route
+                // Skip the first airport on every leg after the first — it's already the last
+                // airport of the previous leg, so we'd duplicate it otherwise
+                int startIndex = expandedAirports.isEmpty() ? 0 : 1;
+                for (int j = startIndex; j < legPath.size(); j++) {
+                    expandedAirports.add(legPath.get(j));
+                }
+
+                // Step 4: For each sub-leg in the reconstructed path (e.g. YYZ->ORD, ORD->JFK)
+                // look up the available flights from the index
+                for (int j = 0; j < legPath.size() - 1; j++) {
+                    String key = legPath.get(j) + legPath.get(j + 1);
+                    ArrayList<Flight> subLegFlights = flightIndex.get(key);
+
+                    // Dijkstra found a graph path but no matching flights exist in the index
+                    if (subLegFlights == null || subLegFlights.isEmpty()) {
+                        routeValid = false;
+                        break;
+                    }
+                    flightsPerSubLeg.add(subLegFlights);
+                }
+
+                if (!routeValid) break;
+            }
+
+            if (!routeValid) continue;
+
+            // Step 5: Build a Route from the fully expanded airport list and sub-leg flights
+            String[] airportsArray = expandedAirports.toArray(new String[0]);
+            validRoutes.add(new Route(airportsArray, flightsPerSubLeg));
+        }
+
+        // Step 6: Sort by cheapest total price
+        validRoutes.sort((a, b) -> Integer.compare(a.getCheapestTotalPrice(), b.getCheapestTotalPrice()));
+        return validRoutes;
+    }
+
+
+
 
     /**
      * Searches for all valid multi-city routes, sorted by cheapest total price.
@@ -82,6 +185,16 @@ public class MultiCitySearch {
 
         validRoutes.sort((a, b) -> Integer.compare(a.getCheapestTotalPrice(), b.getCheapestTotalPrice()));
         return validRoutes;
+    }
+
+    public static Route findCheapestRoute(ArrayList<Route> validRoutes) {
+        Route cheapestRoute = validRoutes.get(1);
+        for (Route r : validRoutes) {
+            if (r.getCheapestTotalPrice() < cheapestRoute.getCheapestTotalPrice()) {
+                cheapestRoute = r;
+            }
+        }
+        return cheapestRoute;
     }
 
     public static ArrayList<String[]> flightCombinations(String[] airportsToVisit, String homeAirport) {

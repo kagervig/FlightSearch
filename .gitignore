@@ -5,6 +5,7 @@
 .DS_Store
 
 # Backend (Java)
+backend/data/
 backend/out/
 backend/target/
 backend/dependency-reduced-pom.xml
