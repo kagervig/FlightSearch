@@ -422,8 +422,8 @@ public class Server {
         }
         //change "search" to "dijkstraFlightSearch" to change searching algorithm
         ArrayList<Route> validRoutes = new ArrayList<>();
-        //validRoutes = MultiCitySearch.search(from, destinations);
-        validRoutes = MultiCitySearch.dijkstraFlightSearch(from, destinations, flightNetwork, flightIndex);
+        validRoutes = MultiCitySearch.search(from, destinations);
+        //validRoutes = MultiCitySearch.dijkstraFlightSearch(from, destinations, flightNetwork, flightIndex);
 
         if (validRoutes.isEmpty()) {
             ctx.json(Map.of("from", from, "routes", new ArrayList<>()));
