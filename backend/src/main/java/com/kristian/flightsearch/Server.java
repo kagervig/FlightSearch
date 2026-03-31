@@ -421,8 +421,8 @@ public class Server {
             return;
         }
         //change "search" to "dijkstraFlightSearch" to change searching algorithm
-        ArrayList<Route> validRoutes = new ArrayList<>();
-        validRoutes = MultiCitySearch.search(from, destinations);
+        MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, flightIndex);
+        ArrayList<Route> validRoutes = multiCitySearch.search(from, destinations);
         //validRoutes = MultiCitySearch.dijkstraFlightSearch(from, destinations, flightNetwork, flightIndex);
 
         if (validRoutes.isEmpty()) {
