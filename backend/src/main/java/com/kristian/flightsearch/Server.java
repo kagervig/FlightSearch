@@ -70,7 +70,7 @@ public class Server {
         // Step 4: Define routes (endpoints)
         // Each route maps a URL pattern to a handler function
 
-        // Health check - Railway uses this to know your app is running
+        // Health check - Render uses this to know your app is running
         app.get("/health", ctx -> ctx.json(Map.of("status", "ok")));
 
         // List all airports - useful for populating dropdowns in the frontend
@@ -140,7 +140,6 @@ public class Server {
         System.out.println("Loaded " + airports.length + " airports and " + flightList.size() + " flights");
     }
 
-    //MOVE THIS TO FLIGHTGRAPH
     
 
     /**
@@ -421,9 +420,10 @@ public class Server {
             ctx.status(400).json(Map.of("error", "Must have between 1 and 5 destinations"));
             return;
         }
-
-        MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, flightIndex);
-        ArrayList<Route> validRoutes = multiCitySearch.search(from, destinations);
+        //change "search" to "dijkstraFlightSearch" to change searching algorithm
+        ArrayList<Route> validRoutes = new ArrayList<>();
+        //validRoutes = MultiCitySearch.search(from, destinations);
+        validRoutes = MultiCitySearch.dijkstraFlightSearch(from, destinations, flightNetwork, flightIndex);
 
         if (validRoutes.isEmpty()) {
             ctx.json(Map.of("from", from, "routes", new ArrayList<>()));

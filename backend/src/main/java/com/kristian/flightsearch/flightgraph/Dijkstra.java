@@ -1,8 +1,12 @@
 package com.kristian.flightsearch.flightgraph;
 
-import com.kristian.flightsearch.models.Airport;
 import java.time.Duration;
-import java.util.*;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.PriorityQueue;
+
+import com.kristian.flightsearch.models.Airport;
 
 public class Dijkstra {
 
@@ -24,7 +28,7 @@ public class Dijkstra {
         Map<Airport, Integer> flightPrices = new HashMap<>();
 
         // previous: stores which vertex you came FROM to reach each vertex (for reconstructing the path)
-        // Key = airport code (String), Value = the previous vertex (AirportVertex object)
+        // Key = Airport (object), Value = the previous vertex (AirportVertex object)
         // Example: {"B": A, "C": D} means you reach B from A, C from D
         Map<Airport, AirportVertex> previous = new HashMap<>();
         

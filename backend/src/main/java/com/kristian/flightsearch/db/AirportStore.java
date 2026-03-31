@@ -76,6 +76,50 @@ public class AirportStore {
         return results.toArray(new Airport[0]);
     }
 
+    /*
+     * Searches airports by IATA code, city, or name (case-insensitive).
+     * Results are ordered by relevance: exact code match, code prefix, city prefix, then name match.
+     */
+    public Airport[] searchByQuery(String query, int limit) {
+        String sql = "SELECT iata_code, icao_code, name, city, country, latitude, longitude, "
+                + "utc_offset, timezone, elevation_ft, max_runway_length_ft "
+                + "FROM airports "
+                + "WHERE UPPER(iata_code) = UPPER(?) OR iata_code ILIKE ? OR city ILIKE ? OR name ILIKE ? "
+                + "ORDER BY "
+                + "  CASE "
+                + "    WHEN UPPER(iata_code) = UPPER(?) THEN 0 "
+                + "    WHEN iata_code ILIKE ? THEN 1 "
+                + "    WHEN city ILIKE ? THEN 2 "
+                + "    WHEN name ILIKE ? THEN 3 "
+                + "    ELSE 4 "
+                + "  END, city "
+                + "LIMIT ?";
+
+        ArrayList<Airport> results = new ArrayList<>();
+        try (Connection conn = dataSource.getConnection();
+                PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            String prefix = query + "%";
+            String contains = "%" + query + "%";
+            pstmt.setString(1, query);     // WHERE: exact code
+            pstmt.setString(2, prefix);    // WHERE: code prefix
+            pstmt.setString(3, contains);  // WHERE: city contains
+            pstmt.setString(4, contains);  // WHERE: name contains
+            pstmt.setString(5, query);     // ORDER: exact code
+            pstmt.setString(6, prefix);    // ORDER: code prefix
+            pstmt.setString(7, prefix);    // ORDER: city prefix
+            pstmt.setString(8, prefix);    // ORDER: name prefix
+            pstmt.setInt(9, limit);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    results.add(mapRow(rs));
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("Error searching airports by query: " + e.getMessage());
+        }
+        return results.toArray(new Airport[0]);
+    }
+
     private void ensureLoaded() {
         if (cache != null) return;
 

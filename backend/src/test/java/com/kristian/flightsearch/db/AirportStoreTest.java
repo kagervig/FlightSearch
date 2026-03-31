@@ -86,4 +86,32 @@ class AirportStoreTest {
             );
         }
     }
+
+    @Test
+    @DisplayName("searchByQuery() returns results for a partial city name")
+    void testSearchByQueryCity() {
+        Airport[] results = airportStore.searchByQuery("london", 10);
+        assertTrue(results.length > 0, "Expected results for city 'london'");
+    }
+
+    @Test
+    @DisplayName("searchByQuery() returns results for an airport code")
+    void testSearchByQueryCode() {
+        Airport[] results = airportStore.searchByQuery("LHR", 10);
+        assertTrue(results.length > 0, "Expected results for code 'LHR'");
+    }
+
+    @Test
+    @DisplayName("searchByQuery() respects the limit parameter")
+    void testSearchByQueryLimit() {
+        Airport[] results = airportStore.searchByQuery("a", 3);
+        assertTrue(results.length <= 3, "Expected at most 3 results");
+    }
+
+    @Test
+    @DisplayName("searchByQuery() returns empty array for nonsense input")
+    void testSearchByQueryNoMatch() {
+        Airport[] results = airportStore.searchByQuery("zzzzzzzzz", 10);
+        assertEquals(0, results.length);
+    }
 }

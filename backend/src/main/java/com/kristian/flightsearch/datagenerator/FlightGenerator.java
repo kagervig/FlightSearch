@@ -1,14 +1,15 @@
 package com.kristian.flightsearch.datagenerator;
 
-import com.kristian.flightsearch.models.Airport;
-import com.kristian.flightsearch.models.Flight;
-import com.kristian.flightsearch.utils.FlightPrinter;
-import com.kristian.flightsearch.utils.AirportPrinter;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Scanner;
 import java.util.concurrent.ThreadLocalRandom;
+
+import com.kristian.flightsearch.models.Airport;
+import com.kristian.flightsearch.models.Flight;
+import com.kristian.flightsearch.utils.AirportPrinter;
+import com.kristian.flightsearch.utils.FlightPrinter;
 
 
 public class FlightGenerator {
@@ -55,8 +56,9 @@ public class FlightGenerator {
         HashMap<String, ArrayList<Flight>> flightIndex = new HashMap();
         
 
-        //creates a hashmap of flight route (E.G. JFKSEA)
-        // value is arraylist of type Flight
+        //creates a hashmap of flight route 
+        // key is a string (E.G. JFKSEA)
+        // value is arraylist of Flight objects serving that route
         //iterate through flightList, for each flight:
             //concatenate origin & dest as key.
             //if origin-destination are the same, add to arraylist
