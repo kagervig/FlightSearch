@@ -1,5 +1,6 @@
 package com.kristian.flightsearch.models;
 
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -12,6 +13,13 @@ public class Route {
     private ArrayList<ArrayList<Flight>> flights;
     private int cheapestTotalPrice;
     private long shortestTotalDurationMinutes;
+
+    // Connection metadata — null for direct-only routes
+    private LocalDate[] legDates;
+    private String[] intendedAirports;
+    private boolean[] isConnectionLeg;
+    private int[] minConnectionMinutes;
+    private boolean[] isOvernightConnectionLeg;
 
     /*flights is a double arraylist as it stores all of the options per leg
     For example: LHR-->JFK is a leg, but there may be n options to pick from
@@ -35,6 +43,18 @@ public class Route {
             cheapestTotalPrice += cheapestLegPrice;
             shortestTotalDurationMinutes += shortestLegDuration;
         }
+    }
+
+    public Route(String[] airports, ArrayList<ArrayList<Flight>> flights,
+                 LocalDate[] legDates, String[] intendedAirports,
+                 boolean[] isConnectionLeg, int[] minConnectionMinutes,
+                 boolean[] isOvernightConnectionLeg) {
+        this(airports, flights);
+        this.legDates = legDates;
+        this.intendedAirports = intendedAirports;
+        this.isConnectionLeg = isConnectionLeg;
+        this.minConnectionMinutes = minConnectionMinutes;
+        this.isOvernightConnectionLeg = isOvernightConnectionLeg;
     }
 
     public void printRoutes(Route r){
@@ -114,5 +134,33 @@ public class Route {
         return this.shortestTotalDurationMinutes;
     }
 
+    public LocalDate[] getLegDates() {
+        return this.legDates;
+    }
 
+    // Returns the intended airports (without connection airports). Falls back to the
+    // full airports array for direct-only routes that have no connection metadata.
+    public String[] getIntendedAirports() {
+        return intendedAirports != null ? intendedAirports : airports;
+    }
+
+    public boolean isConnectionLeg(int i) {
+        return isConnectionLeg != null && isConnectionLeg[i];
+    }
+
+    public int getMinConnectionMinutes(int i) {
+        return minConnectionMinutes != null ? minConnectionMinutes[i] : 0;
+    }
+
+    public boolean isOvernightConnectionLeg(int i) {
+        return isOvernightConnectionLeg != null && isOvernightConnectionLeg[i];
+    }
+
+    public boolean hasConnections() {
+        if (isConnectionLeg == null) return false;
+        for (boolean b : isConnectionLeg) {
+            if (b) return true;
+        }
+        return false;
+    }
 }

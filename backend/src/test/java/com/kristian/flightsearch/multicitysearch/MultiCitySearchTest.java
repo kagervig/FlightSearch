@@ -1,5 +1,7 @@
 package com.kristian.flightsearch.multicitysearch;
 
+import com.kristian.flightsearch.flightgraph.AirportVertex;
+import com.kristian.flightsearch.flightgraph.FlightGraph;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
 import com.kristian.flightsearch.models.Route;
@@ -7,12 +9,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -47,6 +53,8 @@ class MultiCitySearchTest {
         flightIndex.put("LHRJFK", new ArrayList<>(List.of(lhrJfk)));
         flightIndex.put("JFKCDG", new ArrayList<>(List.of(jfkCdg)));
         flightIndex.put("CDGLHR", new ArrayList<>(List.of(cdgLhr)));
+
+        setUpConnectionData();
     }
 
     @Test
@@ -293,5 +301,279 @@ class MultiCitySearchTest {
         assertEquals(LocalDate.of(2026, 4, 15), dates[0]); // JFK→LHR
         assertEquals(LocalDate.of(2026, 4, 19), dates[1]); // LHR→CDG (15 + 3 + 1)
         assertEquals(LocalDate.of(2026, 4, 22), dates[2]); // CDG→JFK (19 + 2 + 1)
+    }
+
+    // -----------------------------------------------------------------------
+    // searchByDateWithConnections tests
+    //
+    // Setup:
+    //   Home: JFK. Destinations: [GYE] (Guayaquil).
+    //   No direct LHR→GYE or GYE→LHR flights — must connect via UIO (Quito).
+    //
+    //   LHR→UIO: departs 10:00, distance 1363 km → arrives 12:00 (2h flight)
+    //   Valid same-day UIO→GYE: departs 15:00 (3h after 12:00, > 2h) ✓
+    //   Invalid same-day UIO→GYE: departs 13:00 (1h after 12:00, ≤ 2h) ✗
+    //   Next-day UIO→GYE: departs 08:00 on leg date + 1 ✓
+    //
+    //   Permutation JFK→LHR→GYE→JFK with daysAtAirport = {LHR: 3, GYE: 2}:
+    //     JFK→LHR on 2026-04-15
+    //     LHR→GYE (via UIO) on 2026-04-19  (Apr15 + 3 + 1)
+    //     GYE→JFK on 2026-04-22  (Apr19 + 2 + 1)
+    // -----------------------------------------------------------------------
+
+    // Flight number constants for connection tests
+    private static final String FN_JFK_LHR = "AA100";
+    private static final String FN_LHR_UIO = "LH1234";
+    private static final String FN_UIO_GYE_VALID = "AV5000";   // departs 15:00, > 2h after LHR→UIO arrives 12:00
+    private static final String FN_UIO_GYE_INVALID = "AV5001"; // departs 13:00, ≤ 2h after LHR→UIO arrives 12:00
+    private static final String FN_UIO_GYE_NEXTDAY = "AV5002"; // departs 08:00, for next-day connection
+    private static final String FN_GYE_JFK = "UA9999";
+
+    // 1363 km gives exactly 2h flight time at 852 km/h + 0.4h overhead
+    private static final double LHR_UIO_DISTANCE_KM = 1363.0;
+    private static final double UIO_GYE_DISTANCE_KM = 400.0;
+
+    private Airport uio;
+    private Airport gye;
+    private HashMap<String, ArrayList<Flight>> connectionFlightIndex;
+    private FlightGraph connectionGraph;
+
+    // Connection test departure date reuses DEPARTURE = 2026-04-15
+    // LHR→GYE leg date: 2026-04-19 (Apr15 + 3 days at LHR + 1)
+    private static final LocalDate CONN_LEG_DATE = LocalDate.of(2026, 4, 19);
+    private static final LocalDate CONN_LEG_DATE_PLUS_1 = LocalDate.of(2026, 4, 20);
+    private static final LocalDate GYE_JFK_DATE = LocalDate.of(2026, 4, 22);
+
+    private void setUpConnectionData() {
+        uio = new Airport("UIO", "Mariscal Sucre International", -0.1292, -78.3575, 9228, 2813, "Quito", "Ecuador");
+        gye = new Airport("GYE", "Jose Joaquin de Olmedo International", -2.1574, -79.8836, 19, 6, "Guayaquil", "Ecuador");
+
+        // LHR→UIO: 1363 km, departs 10:00, arrives 12:00 (2h flight)
+        Flight lhrUio = new Flight(lhr, uio, LHR_UIO_DISTANCE_KM, LocalTime.of(10, 0), FN_LHR_UIO);
+
+        // UIO→GYE valid: departs 15:00 — 3h after LHR→UIO arrives, satisfies > 2h
+        Flight uioGyeValid = new Flight(uio, gye, UIO_GYE_DISTANCE_KM, LocalTime.of(15, 0), FN_UIO_GYE_VALID);
+
+        // UIO→GYE invalid: departs 13:00 — only 1h after LHR→UIO arrives, violates > 2h
+        Flight uioGyeInvalid = new Flight(uio, gye, UIO_GYE_DISTANCE_KM, LocalTime.of(13, 0), FN_UIO_GYE_INVALID);
+
+        // UIO→GYE next-day: departs 08:00 — used as the next-day option
+        Flight uioGyeNextDay = new Flight(uio, gye, UIO_GYE_DISTANCE_KM, LocalTime.of(8, 0), FN_UIO_GYE_NEXTDAY);
+
+        Flight jfkLhr = new Flight(jfk, lhr, 5570.0, LocalTime.of(9, 0), FN_JFK_LHR);
+        Flight gyeJfk = new Flight(gye, jfk, 4700.0, LocalTime.of(10, 0), FN_GYE_JFK);
+        Flight lhrJfk = new Flight(lhr, jfk, 5570.0, LocalTime.of(11, 0), "AA101");
+        Flight jfkGye = new Flight(jfk, gye, 4700.0, LocalTime.of(8, 0), "UA0001");
+        Flight uioLhr = new Flight(uio, lhr, LHR_UIO_DISTANCE_KM, LocalTime.of(14, 0), "LH1235");
+        Flight gyeUio = new Flight(gye, uio, UIO_GYE_DISTANCE_KM, LocalTime.of(6, 0), "AV5003");
+
+        connectionFlightIndex = new HashMap<>();
+        connectionFlightIndex.put("JFKLHR", new ArrayList<>(List.of(jfkLhr)));
+        connectionFlightIndex.put("LHRJFK", new ArrayList<>(List.of(lhrJfk)));
+        connectionFlightIndex.put("JFKGYE", new ArrayList<>(List.of(jfkGye)));
+        connectionFlightIndex.put("GYEJFK", new ArrayList<>(List.of(gyeJfk)));
+        connectionFlightIndex.put("LHRUIO", new ArrayList<>(List.of(lhrUio)));
+        connectionFlightIndex.put("UIOLHR", new ArrayList<>(List.of(uioLhr)));
+        connectionFlightIndex.put("UIOGYE", new ArrayList<>(List.of(uioGyeValid, uioGyeInvalid, uioGyeNextDay)));
+        connectionFlightIndex.put("GYEUIO", new ArrayList<>(List.of(gyeUio)));
+        // No LHRGYE or GYELHO — these require a connection via UIO
+
+        connectionGraph = new FlightGraph(true, true);
+        AirportVertex vJfk = connectionGraph.addVertex(jfk);
+        AirportVertex vLhr = connectionGraph.addVertex(lhr);
+        AirportVertex vUio = connectionGraph.addVertex(uio);
+        AirportVertex vGye = connectionGraph.addVertex(gye);
+
+        connectionGraph.addEdge(vJfk, vLhr, jfkLhr.getPrice(), jfkLhr.getDuration(), FN_JFK_LHR);
+        connectionGraph.addEdge(vLhr, vJfk, lhrJfk.getPrice(), lhrJfk.getDuration(), "AA101");
+        connectionGraph.addEdge(vJfk, vGye, jfkGye.getPrice(), jfkGye.getDuration(), "UA0001");
+        connectionGraph.addEdge(vGye, vJfk, gyeJfk.getPrice(), gyeJfk.getDuration(), FN_GYE_JFK);
+        connectionGraph.addEdge(vLhr, vUio, lhrUio.getPrice(), lhrUio.getDuration(), FN_LHR_UIO);
+        connectionGraph.addEdge(vUio, vLhr, uioLhr.getPrice(), uioLhr.getDuration(), "LH1235");
+        connectionGraph.addEdge(vUio, vGye, uioGyeValid.getPrice(), uioGyeValid.getDuration(), FN_UIO_GYE_VALID);
+        connectionGraph.addEdge(vGye, vUio, gyeUio.getPrice(), gyeUio.getDuration(), "AV5003");
+        // No direct LHR→GYE or GYE→LHR edge
+    }
+
+    private HashMap<String, Map<String, Integer>> buildConnectionDateIndex(boolean includeValidSameDay,
+                                                                           boolean includeInvalidSameDay,
+                                                                           boolean includeNextDay) {
+        HashMap<String, Map<String, Integer>> idx = new HashMap<>();
+        idx.put("JFKLHR" + DEPARTURE, Map.of(FN_JFK_LHR, 300));
+        idx.put("GYEJFK" + GYE_JFK_DATE, Map.of(FN_GYE_JFK, 450));
+
+        idx.put("LHRUIO" + CONN_LEG_DATE, Map.of(FN_LHR_UIO, 400));
+
+        Map<String, Integer> sameDayOutbound = new HashMap<>();
+        if (includeValidSameDay) sameDayOutbound.put(FN_UIO_GYE_VALID, 150);
+        if (includeInvalidSameDay) sameDayOutbound.put(FN_UIO_GYE_INVALID, 120);
+        if (!sameDayOutbound.isEmpty()) idx.put("UIOGYE" + CONN_LEG_DATE, sameDayOutbound);
+
+        if (includeNextDay) idx.put("UIOGYE" + CONN_LEG_DATE_PLUS_1, Map.of(FN_UIO_GYE_NEXTDAY, 180));
+
+        return idx;
+    }
+
+    @Test
+    @DisplayName("searchByDateWithConnections finds a route via a connection airport when no direct flight exists")
+    void connectionSearchFindsRouteViaConnection() {
+        MultiCitySearch mcs = new MultiCitySearch(null, connectionFlightIndex);
+        ArrayList<Route> routes = mcs.searchByDateWithConnectionsAndIndex(
+                "JFK", new String[]{"LHR", "GYE"}, DEPARTURE,
+                Map.of("LHR", 3, "GYE", 2), "price",
+                buildConnectionDateIndex(true, false, false),
+                connectionGraph);
+
+        assertFalse(routes.isEmpty(), "Expected at least one route via UIO connection");
+        boolean hasUio = routes.stream()
+                .anyMatch(r -> Arrays.asList(r.getAirports()).contains("UIO"));
+        assertTrue(hasUio, "Expected at least one route to include UIO as a connection airport");
+    }
+
+    @Test
+    @DisplayName("searchByDateWithConnections marks UIO legs as connection legs")
+    void connectionSearchSetsIsConnectionLegFlag() {
+        MultiCitySearch mcs = new MultiCitySearch(null, connectionFlightIndex);
+        ArrayList<Route> routes = mcs.searchByDateWithConnectionsAndIndex(
+                "JFK", new String[]{"LHR", "GYE"}, DEPARTURE,
+                Map.of("LHR", 3, "GYE", 2), "price",
+                buildConnectionDateIndex(true, false, false),
+                connectionGraph);
+
+        Route routeViaUio = routes.stream()
+                .filter(r -> Arrays.asList(r.getAirports()).contains("UIO"))
+                .findFirst().orElse(null);
+        assertNotNull(routeViaUio);
+
+        String[] airports = routeViaUio.getAirports();
+        int uioIndex = -1;
+        for (int i = 0; i < airports.length; i++) {
+            if ("UIO".equals(airports[i])) { uioIndex = i; break; }
+        }
+        // The leg ending at UIO (i.e. leg uioIndex - 1) should be a connection leg
+        assertTrue(routeViaUio.isConnectionLeg(uioIndex - 1),
+                "Leg ending at UIO should be flagged as a connection leg");
+        assertFalse(routeViaUio.isConnectionLeg(uioIndex),
+                "Leg departing UIO (to GYE, an intended destination) should not be a connection leg");
+    }
+
+    @Test
+    @DisplayName("searchByDateWithConnections excludes connections where gap is <= 2h")
+    void connectionSearchRejectsInsufficientConnectionTime() {
+        MultiCitySearch mcs = new MultiCitySearch(null, connectionFlightIndex);
+        // Only the invalid same-day flight (13:00, 1h gap) — no valid connection
+        ArrayList<Route> routes = mcs.searchByDateWithConnectionsAndIndex(
+                "JFK", new String[]{"LHR", "GYE"}, DEPARTURE,
+                Map.of("LHR", 3, "GYE", 2), "price",
+                buildConnectionDateIndex(false, true, false),
+                connectionGraph);
+
+        boolean hasUio = routes.stream()
+                .anyMatch(r -> Arrays.asList(r.getAirports()).contains("UIO"));
+        assertFalse(hasUio, "Route via UIO should be excluded when only an insufficient connection time is available");
+    }
+
+    @Test
+    @DisplayName("searchByDateWithConnections accepts a same-day connection with > 2h gap")
+    void connectionSearchAcceptsValidSameDayConnection() {
+        MultiCitySearch mcs = new MultiCitySearch(null, connectionFlightIndex);
+        ArrayList<Route> routes = mcs.searchByDateWithConnectionsAndIndex(
+                "JFK", new String[]{"LHR", "GYE"}, DEPARTURE,
+                Map.of("LHR", 3, "GYE", 2), "price",
+                buildConnectionDateIndex(true, false, false),
+                connectionGraph);
+
+        Route routeViaUio = routes.stream()
+                .filter(r -> Arrays.asList(r.getAirports()).contains("UIO"))
+                .findFirst().orElse(null);
+        assertNotNull(routeViaUio, "Expected a route via UIO with a valid same-day connection");
+
+        String[] airports = routeViaUio.getAirports();
+        int uioIndex = -1;
+        for (int i = 0; i < airports.length; i++) {
+            if ("UIO".equals(airports[i])) { uioIndex = i; break; }
+        }
+        assertFalse(routeViaUio.isOvernightConnectionLeg(uioIndex - 1),
+                "Same-day connection should not be flagged as overnight");
+        assertTrue(routeViaUio.getMinConnectionMinutes(uioIndex - 1) > 120,
+                "Connection time should be > 2h (120 min)");
+    }
+
+    @Test
+    @DisplayName("searchByDateWithConnections accepts a next-day connection and marks it overnight")
+    void connectionSearchAcceptsNextDayConnectionAsOvernight() {
+        MultiCitySearch mcs = new MultiCitySearch(null, connectionFlightIndex);
+        // Only next-day option available
+        ArrayList<Route> routes = mcs.searchByDateWithConnectionsAndIndex(
+                "JFK", new String[]{"LHR", "GYE"}, DEPARTURE,
+                Map.of("LHR", 3, "GYE", 2), "price",
+                buildConnectionDateIndex(false, false, true),
+                connectionGraph);
+
+        Route routeViaUio = routes.stream()
+                .filter(r -> Arrays.asList(r.getAirports()).contains("UIO"))
+                .findFirst().orElse(null);
+        assertNotNull(routeViaUio, "Expected a route via UIO using the next-day connection");
+
+        String[] airports = routeViaUio.getAirports();
+        int uioIndex = -1;
+        for (int i = 0; i < airports.length; i++) {
+            if ("UIO".equals(airports[i])) { uioIndex = i; break; }
+        }
+        assertTrue(routeViaUio.isOvernightConnectionLeg(uioIndex - 1),
+                "Next-day only connection should be flagged as overnight");
+    }
+
+    @Test
+    @DisplayName("searchByDateWithConnections returns empty when no valid connection exists at all")
+    void connectionSearchReturnsEmptyWhenNoConnectionFlightsExist() {
+        MultiCitySearch mcs = new MultiCitySearch(null, connectionFlightIndex);
+        ArrayList<Route> routes = mcs.searchByDateWithConnectionsAndIndex(
+                "JFK", new String[]{"LHR", "GYE"}, DEPARTURE,
+                Map.of("LHR", 3, "GYE", 2), "price",
+                new HashMap<>(), // no DB flights at all
+                connectionGraph);
+
+        assertTrue(routes.isEmpty());
+    }
+
+    @Test
+    @DisplayName("searchByDateWithConnections preserves direct legs for routes that do not need a connection")
+    void connectionSearchPreservesDirectLegs() {
+        MultiCitySearch mcs = new MultiCitySearch(null, connectionFlightIndex);
+        HashMap<String, Map<String, Integer>> idx = buildConnectionDateIndex(true, false, false);
+
+        ArrayList<Route> routes = mcs.searchByDateWithConnectionsAndIndex(
+                "JFK", new String[]{"LHR", "GYE"}, DEPARTURE,
+                Map.of("LHR", 3, "GYE", 2), "price", idx, connectionGraph);
+
+        // Every route must start and end at JFK
+        for (Route r : routes) {
+            String[] airports = r.getAirports();
+            assertEquals("JFK", airports[0]);
+            assertEquals("JFK", airports[airports.length - 1]);
+        }
+    }
+
+    @Test
+    @DisplayName("searchByDateWithConnections stores correct intended airports without connection airports")
+    void connectionSearchStoresIntendedAirports() {
+        MultiCitySearch mcs = new MultiCitySearch(null, connectionFlightIndex);
+        ArrayList<Route> routes = mcs.searchByDateWithConnectionsAndIndex(
+                "JFK", new String[]{"LHR", "GYE"}, DEPARTURE,
+                Map.of("LHR", 3, "GYE", 2), "price",
+                buildConnectionDateIndex(true, false, false),
+                connectionGraph);
+
+        Route routeViaUio = routes.stream()
+                .filter(r -> Arrays.asList(r.getAirports()).contains("UIO"))
+                .findFirst().orElse(null);
+        assertNotNull(routeViaUio);
+
+        // Intended airports must not include UIO
+        List<String> intended = Arrays.asList(routeViaUio.getIntendedAirports());
+        assertFalse(intended.contains("UIO"), "UIO should not appear in intended airports");
+        assertTrue(intended.contains("LHR"));
+        assertTrue(intended.contains("GYE"));
     }
 }

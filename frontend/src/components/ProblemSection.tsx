@@ -107,7 +107,7 @@ export function ProblemSection() {
           <div className="rounded-2xl border p-6 flex flex-col" style={{ borderColor: "var(--border)", background: "var(--card)" }}>
             <div className="flex-1 flex flex-col justify-center">
               {showMap
-                ? <RouteMap journey={DEMO_JOURNEY} airports={DEMO_AIRPORTS} mapHeight={260} />
+                ? <RouteMap journey={DEMO_JOURNEY} airports={DEMO_AIRPORTS} mapHeight={260} showHeading />
                 : <div />
               }
             </div>
