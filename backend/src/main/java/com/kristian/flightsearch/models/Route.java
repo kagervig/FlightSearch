@@ -11,6 +11,7 @@ public class Route {
     private String[] airports;
     private ArrayList<ArrayList<Flight>> flights;
     private int cheapestTotalPrice;
+    private long shortestTotalDurationMinutes;
 
     /*flights is a double arraylist as it stores all of the options per leg
     For example: LHR-->JFK is a leg, but there may be n options to pick from
@@ -21,23 +22,18 @@ public class Route {
         this.flights = flights;
         cheapestTotalPrice = 0;
 
-        //calculate cheapest total price for all flights
+        // Calculate cheapest total price and shortest total duration across all legs
         for (int i = 0; i < flights.size(); i++){
-            int legPrices[] = new int[flights.get(i).size()];
-            int j = 0;
-            for (Flight f : flights.get(i)){
-                legPrices[j] = f.getPrice();
-                j++;
-            }
-            //System.out.println("");
-            int cheapestLegPrice = legPrices[0];
+            int cheapestLegPrice = Integer.MAX_VALUE;
+            long shortestLegDuration = Long.MAX_VALUE;
 
-            for (int price : legPrices){
-                if (price < cheapestLegPrice){
-                    cheapestLegPrice = price;
-                }
+            for (Flight f : flights.get(i)){
+                if (f.getPrice() < cheapestLegPrice) cheapestLegPrice = f.getPrice();
+                long mins = f.getDuration().toMinutes();
+                if (mins < shortestLegDuration) shortestLegDuration = mins;
             }
             cheapestTotalPrice += cheapestLegPrice;
+            shortestTotalDurationMinutes += shortestLegDuration;
         }
     }
 
@@ -114,6 +110,9 @@ public class Route {
     public void setCheapestTotalPrice(int cheapestTotalPrice){
         this.cheapestTotalPrice = cheapestTotalPrice;
     }
+    public long getShortestTotalDurationMinutes(){
+        return this.shortestTotalDurationMinutes;
+    }
 
-    
+
 }
