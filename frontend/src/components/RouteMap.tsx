@@ -23,6 +23,8 @@ interface RouteMapProps {
   airports: AirportCoord[];
   /** Override the auto-calculated SVG height (default: containerWidth × 0.46) */
   mapHeight?: number;
+  /** Show the "The CityHopper Way" heading above the map (default: false) */
+  showHeading?: boolean;
 }
 
 // Module-level cache so world data is fetched only once per page session
@@ -37,7 +39,7 @@ async function getWorldData(): Promise<unknown> {
   return worldDataCache;
 }
 
-export function RouteMap({ journey, airports, mapHeight }: RouteMapProps) {
+export function RouteMap({ journey, airports, mapHeight, showHeading = false }: RouteMapProps) {
   const uid = useId().replace(/:/g, "");
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -56,7 +58,6 @@ export function RouteMap({ journey, airports, mapHeight }: RouteMapProps) {
       if (w) setContainerWidth(Math.floor(w));
     });
     obs.observe(el);
-    setContainerWidth(Math.floor(el.clientWidth));
     return () => obs.disconnect();
   }, []);
 
@@ -161,8 +162,16 @@ export function RouteMap({ journey, airports, mapHeight }: RouteMapProps) {
           .attr("stroke-dashoffset", 0);
       }
 
+      // Tile label constants — shared between initial render and zoom handler
+      const FONT_SIZE = 10;
+      const TILE_PAD_X = 5;
+      const TILE_PAD_Y = 2;
+      const TILE_CORNER = 4;
+      const TILE_OFFSET_X = 10;
+      const TILE_OFFSET_Y = -7;
+
       // Build marker data — deduplicate airports (home appears at start and end)
-      type MarkerDatum = { code: string; x: number; y: number; label: string };
+      type MarkerDatum = { code: string; x: number; y: number; label: string; ox: number; oy: number };
       const markerData: MarkerDatum[] = [];
       const seen = new Set<string>();
       const homeCode = journey[0];
@@ -175,16 +184,8 @@ export function RouteMap({ journey, airports, mapHeight }: RouteMapProps) {
         const projected = projection([airport.lng, airport.lat]);
         if (!projected) return;
         const stopLabel = code === homeCode ? "Home" : String(stopNum++);
-        markerData.push({ code, x: projected[0], y: projected[1], label: `${stopLabel} · ${code}` });
+        markerData.push({ code, x: projected[0], y: projected[1], label: `${stopLabel} · ${code}`, ox: TILE_OFFSET_X, oy: TILE_OFFSET_Y });
       });
-
-      // Tile label constants — shared between initial render and zoom handler
-      const FONT_SIZE = 10;
-      const TILE_PAD_X = 5;
-      const TILE_PAD_Y = 2;
-      const TILE_CORNER = 4;
-      const TILE_OFFSET_X = 10;
-      const TILE_OFFSET_Y = -7;
 
       const isDark = document.documentElement.classList.contains("dark");
       const tileBg = isDark ? "hsl(224 68% 14%)" : "#ffffff";
@@ -212,7 +213,7 @@ export function RouteMap({ journey, airports, mapHeight }: RouteMapProps) {
       // so the tile stays visually constant size regardless of zoom level
       const labelTiles = markerGroups.append("g")
         .attr("class", "airport-label-group")
-        .attr("transform", (d) => `translate(${d.x + TILE_OFFSET_X}, ${d.y + TILE_OFFSET_Y})`);
+        .attr("transform", (d) => `translate(${d.x + d.ox}, ${d.y + d.oy})`);
 
       labelTiles.append("rect")
         .attr("class", "airport-label-bg")
@@ -231,14 +232,54 @@ export function RouteMap({ journey, airports, mapHeight }: RouteMapProps) {
         .attr("fill", tileFg)
         .text((d) => d.label);
 
-      // Size each rect to its text content using getBBox
-      markerGroups.each(function() {
+      // Size rects and pick the candidate offset with least overlap for each label (greedy)
+      const labelH = FONT_SIZE + TILE_PAD_Y * 2;
+      type Rect = { x: number; y: number; w: number; h: number };
+      const placedRects: Rect[] = [];
+
+      const overlapArea = (a: Rect, b: Rect) => {
+        const dx = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+        const dy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+        return dx * dy;
+      };
+
+      markerGroups.each(function(d) {
         const grp = d3.select(this);
         const textEl = grp.select<SVGTextElement>(".airport-label").node()!;
-        const bbox = textEl.getBBox();
-        grp.select(".airport-label-bg")
-          .attr("width", bbox.width + TILE_PAD_X * 2)
-          .attr("height", FONT_SIZE + TILE_PAD_Y * 2);
+        const labelW = textEl.getBBox().width + TILE_PAD_X * 2;
+
+        grp.select(".airport-label-bg").attr("width", labelW).attr("height", labelH);
+
+        // Six candidate positions: right-above, right-below, left-above, left-below, right-mid, left-mid
+        const candidates = [
+          { ox: TILE_OFFSET_X, oy: TILE_OFFSET_Y },
+          { ox: TILE_OFFSET_X, oy: 8 },
+          { ox: -labelW - TILE_OFFSET_X, oy: TILE_OFFSET_Y },
+          { ox: -labelW - TILE_OFFSET_X, oy: 8 },
+          { ox: TILE_OFFSET_X, oy: -labelH / 2 },
+          { ox: -labelW - TILE_OFFSET_X, oy: -labelH / 2 },
+        ];
+
+        let bestOx = TILE_OFFSET_X;
+        let bestOy = TILE_OFFSET_Y;
+        let minOverlap = Infinity;
+
+        for (const c of candidates) {
+          const rect: Rect = { x: d.x + c.ox, y: d.y + c.oy, w: labelW, h: labelH };
+          const total = placedRects.reduce((sum, p) => sum + overlapArea(rect, p), 0);
+          if (total < minOverlap) {
+            minOverlap = total;
+            bestOx = c.ox;
+            bestOy = c.oy;
+          }
+        }
+
+        d.ox = bestOx;
+        d.oy = bestOy;
+        placedRects.push({ x: d.x + bestOx, y: d.y + bestOy, w: labelW, h: labelH });
+
+        grp.select<SVGGElement>(".airport-label-group")
+          .attr("transform", `translate(${d.x + bestOx}, ${d.y + bestOy})`);
       });
 
       // Compute initial transform to fit the route's bounding box with padding
@@ -261,7 +302,7 @@ export function RouteMap({ journey, airports, mapHeight }: RouteMapProps) {
         const routeW = maxX - minX;
         const routeH = maxY - minY;
 
-        const padding = 80;
+        const padding = Math.min(80, width * 0.12);
         const scale = Math.min(
           routeW > 0 ? (width - 2 * padding) / routeW : 8,
           routeH > 0 ? (height - 2 * padding) / routeH : 8,
@@ -278,7 +319,7 @@ export function RouteMap({ journey, airports, mapHeight }: RouteMapProps) {
       // Zoom behaviour — transforms the content group and inverse-scales
       // strokes/markers/labels so they stay visually constant size
       const zoom = d3.zoom<SVGSVGElement, unknown>()
-        .scaleExtent([0.5, 15])
+        .scaleExtent([Math.min(0.1, initialTransform.k * 0.8), 15])
         .on("zoom", (event) => {
           const { transform } = event;
           g.attr("transform", transform);
@@ -293,7 +334,7 @@ export function RouteMap({ journey, airports, mapHeight }: RouteMapProps) {
 
           g.selectAll<SVGGElement, MarkerDatum>(".airport-label-group")
             .attr("transform", (d) =>
-              `translate(${d.x + TILE_OFFSET_X / k}, ${d.y + TILE_OFFSET_Y / k}) scale(${1 / k})`
+              `translate(${d.x + d.ox / k}, ${d.y + d.oy / k}) scale(${1 / k})`
             );
         });
 
@@ -323,9 +364,11 @@ export function RouteMap({ journey, airports, mapHeight }: RouteMapProps) {
   return (
     <div>
       <div className="relative flex items-center justify-center mb-3">
-        <span className="text-xs font-semibold uppercase tracking-widest text-muted">
-          The CityHopper Way
-        </span>
+        {showHeading && (
+          <span className="text-xs font-semibold uppercase tracking-widest text-muted">
+            The CityHopper Way
+          </span>
+        )}
         <button
           type="button"
           onClick={handleReset}
@@ -339,6 +382,7 @@ export function RouteMap({ journey, airports, mapHeight }: RouteMapProps) {
       <div
         ref={containerRef}
         className="rounded-2xl border border-border/40 bg-background/30 overflow-hidden cursor-grab active:cursor-grabbing"
+        style={{ transform: "translateZ(0)" }}
       >
         <svg ref={svgRef} />
       </div>

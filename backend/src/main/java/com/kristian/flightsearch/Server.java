@@ -543,6 +543,13 @@ public class Server {
         ArrayList<Route> validRoutes = multiCitySearch.searchByDate(
                 from, destinations, departureDate, daysAtAirport, optimizeBy, flightStore);
 
+        // When no direct-flight routes exist, fall back to connection search via Dijkstra
+        if (validRoutes.isEmpty()) {
+            validRoutes = multiCitySearch.searchByDateWithConnections(
+                    from, destinations, departureDate, daysAtAirport, optimizeBy,
+                    flightStore, flightNetwork);
+        }
+
         if (validRoutes.isEmpty()) {
             ctx.json(Map.of("from", from, "routes", new ArrayList<>()));
             return;
@@ -554,17 +561,29 @@ public class Server {
             routeMap.put("airports", route.getAirports());
             routeMap.put("cheapestTotalPrice", route.getCheapestTotalPrice());
             routeMap.put("shortestTotalDurationMinutes", route.getShortestTotalDurationMinutes());
+            routeMap.put("hasConnections", route.hasConnections());
 
             List<Map<String, Object>> legs = new ArrayList<>();
             String[] airports = route.getAirports();
             ArrayList<ArrayList<Flight>> allFlights = route.getFlights();
-            LocalDate[] legDates = MultiCitySearch.computeLegDates(airports, departureDate, daysAtAirport);
+
+            // For routes with connections, legDates are stored on the route; for direct-only
+            // routes they are computed from the intended airports and daysAtAirport.
+            LocalDate[] legDates = route.getLegDates() != null
+                    ? route.getLegDates()
+                    : MultiCitySearch.computeLegDates(
+                            route.getIntendedAirports(), departureDate, daysAtAirport);
 
             for (int i = 0; i < allFlights.size(); i++) {
                 Map<String, Object> leg = new HashMap<>();
                 leg.put("from", airports[i]);
                 leg.put("to", airports[i + 1]);
                 leg.put("date", legDates[i].toString());
+                leg.put("isConnection", route.isConnectionLeg(i));
+                if (route.isConnectionLeg(i)) {
+                    leg.put("connectionMinutes", route.getMinConnectionMinutes(i));
+                    leg.put("isOvernightConnection", route.isOvernightConnectionLeg(i));
+                }
 
                 ArrayList<Flight> legFlights = allFlights.get(i);
                 Flight sampleFlight = legFlights.get(0);

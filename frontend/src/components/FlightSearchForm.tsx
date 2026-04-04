@@ -70,8 +70,8 @@ export function FlightSearchForm({ onSearch, isDisabled, isLoading }: FlightSear
   return (
     <div>
       <form onSubmit={handleSubmit(onSearch)} noValidate className="space-y-5">
-        {/* Two-column layout: home/date on left (1/3), destinations on right (2/3) */}
-        <div className="grid grid-cols-3 gap-x-6 items-start">
+        {/* Stacks to 1 column on mobile; home/date on left (1/3), destinations on right (2/3) on md+ */}
+        <div className="grid grid-cols-1 gap-y-5 md:grid-cols-3 md:gap-x-6 md:gap-y-0 items-start">
 
           {/* Left column */}
           <div className="col-span-1 space-y-5">
@@ -179,12 +179,12 @@ export function FlightSearchForm({ onSearch, isDisabled, isLoading }: FlightSear
         </div>
 
         {/* Submit */}
-        <div className="flex justify-end">
+        <div className="flex justify-center md:justify-end">
         <Button
           type="submit"
           variant="primary"
           disabled={isDisabled}
-          className="px-8 py-3 text-base mt-2"
+          className="px-8 py-3 text-base mt-2 w-full md:w-auto"
         >
           {isLoading ? (
             <>

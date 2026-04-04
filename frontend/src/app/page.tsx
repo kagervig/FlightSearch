@@ -56,11 +56,12 @@ function sortedRoutes(
     if (sortBy === "price") {
       return a.cheapestTotalPrice - b.cheapestTotalPrice;
     }
-    // duration: sum of the cheapest flight per leg
+    // duration: sum of flight time plus any connection layovers
     const dur = (route: BackendRoute) =>
       route.legs.reduce((sum, leg) => {
         const best = leg.flights.find((f) => f.cheapest) ?? leg.flights[0];
-        return sum + (best?.durationMinutes ?? 0);
+        const layover = leg.isConnection ? (leg.connectionMinutes ?? 0) : 0;
+        return sum + (best?.durationMinutes ?? 0) + layover;
       }, 0);
     return dur(a) - dur(b);
   });
@@ -121,7 +122,7 @@ export default function Home() {
       {/* Navigation — sits at the top of the hero, scrolls away with the page */}
       <header className="absolute top-0 left-0 right-0 z-30 px-6 py-5">
         <div className="max-w-6xl mx-auto flex items-center justify-end">
-          <nav className="hidden md:flex items-center gap-6">
+          <nav className="flex items-center gap-3 md:gap-6">
             {[
               { label: "How It Works", href: "#how-it-works" },
               { label: "About", href: "#problem" },
@@ -130,7 +131,7 @@ export default function Home() {
               <a
                 key={label}
                 href={href}
-                className="text-sm font-bold text-white transition-opacity hover:opacity-100"
+                className="text-xs md:text-sm font-bold text-white transition-opacity hover:opacity-100"
                 style={{ opacity: 0.85 }}
               >
                 {label}
@@ -202,7 +203,7 @@ export default function Home() {
             <FlightSearchForm
               onSearch={(values) => {
                 reset();
-                setSortBy("price");
+                setSortBy(values.optimizeBy === "duration" ? "duration" : "price");
                 mutate(values);
               }}
               isDisabled={isPending}
