@@ -1,31 +1,147 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=Outfit:wght@300..700&display=swap");
+
 @import "tailwindcss";
 
+/* Tell Tailwind v4 that dark: variants match elements inside .dark */
+@variant dark (&:where(.dark, .dark *));
+
+/* Light mode */
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --primary: #0369a1;
-  --primary-dark: #075985;
-  --accent: #f97316;
+  --primary: hsl(214 84% 56%);
+  --primary-light: hsl(214 84% 94%);
+  --primary-dark: hsl(214 84% 20%);
+
+  --background: hsl(210 20% 96%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(217 32% 17%);
+
+  --border: hsl(215 20% 86%);
+  --muted: hsl(215 16% 50%);
+
+  --foreground: hsl(217 32% 17%);
+  --destructive: hsl(0 84% 60%);
+
+  --font-sans: "DM Sans", system-ui, sans-serif;
+  --font-display: "Outfit", system-ui, sans-serif;
+
+  /* CityHopper design tokens */
+  --ch-navy: #0F1F3D;
+  --ch-accent: #F59E0B;
+  --ch-surface: #F8F9FA;
+  --ch-text: #1A1A2E;
+  --ch-muted: #6B7280;
+
+  /* Hero overlay: dark enough for white headline text */
+  --hero-overlay-from: rgba(0, 0, 0, 0.40);
+  --hero-overlay-to: rgba(0, 0, 0, 0.55);
+  /* Glass: opaque enough for form elements to read cleanly */
+  --hero-glass-bg: color-mix(in srgb, white 88%, transparent);
+  /* Nav text after scroll: dark on light backgrounds */
+  --hero-nav-color: hsl(217 32% 17%);
+  /* Nav scrolled glass */
+  --nav-scrolled-bg: rgba(220, 224, 228, 0.80);
+  --nav-scrolled-border: rgba(0, 0, 0, 0.08);
+}
+
+/* Dark mode — applied via .dark class on <html> */
+.dark {
+  /* Match the exact navy at the top of the dark hero photo */
+  --background: #0B184B;
+  --card: hsl(224 68% 18%);
+  --card-foreground: hsl(210 20% 92%);
+  --border: hsl(220 50% 28%);
+  --muted: hsl(215 20% 60%);
+  --foreground: hsl(210 20% 92%);
+
+  /* CityHopper design tokens — dark mode overrides */
+  --ch-surface: hsl(224 60% 12%);
+  --ch-text: hsl(210 20% 92%);
+  --ch-muted: hsl(215 20% 60%);
+
+  /* Hero overlay: enough to reduce image brightness without losing photo character */
+  --hero-overlay-from: rgba(0, 0, 0, 0.55);
+  --hero-overlay-to: rgba(0, 0, 0, 0.70);
+  /* Glass: opaque enough for form elements to read cleanly in dark mode */
+  --hero-glass-bg: color-mix(in srgb, #0B184B 82%, transparent);
+  /* Nav text after scroll: white on dark backgrounds */
+  --hero-nav-color: white;
+  /* Nav scrolled glass */
+  --nav-scrolled-bg: rgba(11, 24, 75, 0.70);
+  --nav-scrolled-border: rgba(255, 255, 255, 0.12);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0c1222;
-    --foreground: #e2e8f0;
-    --primary: #38bdf8;
-    --primary-dark: #0ea5e9;
-  }
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-light: var(--primary-light);
+  --color-primary-dark: var(--primary-dark);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-destructive: var(--destructive);
+  --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-sans);
+}
+
+.glass {
+  background: color-mix(in srgb, var(--card) 85%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border-radius: 1.5rem;
+}
+
+/* Text shadow for hero header — subtle in light mode, stronger in dark */
+.hero-text-shadow {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.dark .hero-text-shadow {
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+/* Sticky frosted-glass navigation bar */
+.hero-header {
+  background: rgba(220, 224, 228, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.dark .hero-header {
+  background: rgba(11, 24, 75, 0.35);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* Glass variant for use on top of the hero image */
+.hero-glass {
+  background: var(--hero-glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  border-radius: 1.5rem;
+}
+
+/* Hide the browser's native calendar icon on date inputs — we supply our own */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  display: none;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
 }

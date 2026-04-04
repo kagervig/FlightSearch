@@ -22,8 +22,10 @@ package com.kristian.flightsearch;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.kristian.flightsearch.datagenerator.FlightGenerator;
 import com.kristian.flightsearch.db.AirportStore;
@@ -94,6 +96,10 @@ public class Server {
         // Example: /api/airports/search?city=london
         app.get("/api/airports/search", Server::searchAirportsByCity);
 
+        // All distinct airport-to-airport connections in the flight graph
+        // Used to render the full network on the Route Map page
+        app.get("/api/graph/connections", Server::getGraphConnections);
+
         // Step 5: Start the server
         app.start(port);
         System.out.println("Server started on port " + port);
@@ -141,6 +147,52 @@ public class Server {
     }
 
     
+
+    /**
+     * GET /api/graph/connections
+     * Returns all airports and all distinct (undirected) connections between them
+     * drawn from the flight graph's edge list. Used to render the full route network.
+     */
+    private static void getGraphConnections(Context ctx) {
+        // Canonical key for undirected deduplication: always put the lexically smaller
+        // code first so A-B and B-A collapse to the same entry.
+        Set<String> seen = new HashSet<>();
+        List<Map<String, String>> connections = new ArrayList<>();
+        Set<String> usedCodes = new HashSet<>();
+
+        for (AirportVertex vertex : flightNetwork.getVertices()) {
+            for (var edge : vertex.getEdges()) {
+                String from = edge.getStart().getData().getCode();
+                String to   = edge.getEnd().getData().getCode();
+                String key  = from.compareTo(to) < 0 ? from + "-" + to : to + "-" + from;
+
+                if (seen.add(key)) {
+                    Map<String, String> conn = new HashMap<>();
+                    conn.put("from", from);
+                    conn.put("to", to);
+                    connections.add(conn);
+                    usedCodes.add(from);
+                    usedCodes.add(to);
+                }
+            }
+        }
+
+        // Only include airports that appear in at least one connection
+        List<Map<String, Object>> airports = new ArrayList<>();
+        for (AirportVertex vertex : flightNetwork.getVertices()) {
+            Airport a = vertex.getData();
+            if (!usedCodes.contains(a.getCode())) continue;
+            Map<String, Object> entry = new HashMap<>();
+            entry.put("code",    a.getCode());
+            entry.put("city",    a.getCity());
+            entry.put("country", a.getCountry());
+            entry.put("lat",     a.getLat());
+            entry.put("lon",     a.getLon());
+            airports.add(entry);
+        }
+
+        ctx.json(Map.of("airports", airports, "connections", connections));
+    }
 
     /**
      * GET /api/airports
@@ -449,8 +501,12 @@ public class Server {
                 Flight sampleFlight = legFlights.get(0);
                 leg.put("fromCity", sampleFlight.getOrigin().getCity());
                 leg.put("fromCountry", sampleFlight.getOrigin().getCountry());
+                leg.put("fromLat", sampleFlight.getOrigin().getLat());
+                leg.put("fromLon", sampleFlight.getOrigin().getLon());
                 leg.put("toCity", sampleFlight.getDestination().getCity());
                 leg.put("toCountry", sampleFlight.getDestination().getCountry());
+                leg.put("toLat", sampleFlight.getDestination().getLat());
+                leg.put("toLon", sampleFlight.getDestination().getLon());
                 // find cheapest price for this leg
                 int cheapestPrice = Integer.MAX_VALUE;
                 for (Flight f : legFlights) {
