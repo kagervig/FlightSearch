@@ -3,8 +3,13 @@ import "./globals.css";
 import Providers from "./providers";
 
 export const metadata: Metadata = {
-  title: "FlightSearch | Find Your Optimal Route",
-  description: "Search for the best flight routes optimized by price, duration, or number of stops.",
+  title: "CityHopper | Multi-City Travel, Finally Solved",
+  description: "Plan multi-city trips with up to 5 destinations. CityHopper finds the cheapest or fastest combination of flights and brings you home.",
+  openGraph: {
+    title: "CityHopper | Multi-City Travel, Finally Solved",
+    description: "Plan multi-city trips with up to 5 destinations. CityHopper finds the cheapest or fastest combination of flights and brings you home.",
+    type: "website",
+  },
 };
 
 export default function RootLayout({
