@@ -28,9 +28,10 @@ export function ThemeToggle() {
     <button
       onClick={toggle}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      style={{ color: "var(--hero-nav-color)", borderColor: "color-mix(in srgb, var(--hero-nav-color) 30%, transparent)" }}
       className={cn(
-        "w-9 h-9 rounded-xl flex items-center justify-center transition-colors",
-        "border border-border/50 text-muted hover:text-foreground hover:bg-card"
+        "w-9 h-9 rounded-xl flex items-center justify-center transition-colors border",
+        "hover:bg-black/5 dark:hover:bg-white/10"
       )}
     >
       {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}

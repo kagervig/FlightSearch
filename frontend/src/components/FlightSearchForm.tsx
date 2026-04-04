@@ -15,7 +15,6 @@ import { AirportAutocomplete } from "@/components/AirportAutocomplete";
 import { DestinationRow } from "@/components/DestinationRow";
 import { OptimizeByToggle } from "@/components/OptimizeByToggle";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 
 const schema = z.object({
   homeAirport: z.object({
@@ -39,10 +38,13 @@ export type SearchFormValues = z.infer<typeof schema>;
 
 interface FlightSearchFormProps {
   onSearch: (values: SearchFormValues) => void;
+  /** Disables the submit button immediately to prevent double-submission. */
+  isDisabled: boolean;
+  /** Shows the loading spinner after a delay; true only when the backend is slow. */
   isLoading: boolean;
 }
 
-export function FlightSearchForm({ onSearch, isLoading }: FlightSearchFormProps) {
+export function FlightSearchForm({ onSearch, isDisabled, isLoading }: FlightSearchFormProps) {
   const today = new Date().toISOString().split("T")[0];
   const dateInputRef = useRef<HTMLInputElement>(null);
 
@@ -66,14 +68,7 @@ export function FlightSearchForm({ onSearch, isLoading }: FlightSearchFormProps)
   });
 
   return (
-    <Card className="p-6">
-      <h2
-        className="text-2xl font-semibold mb-6"
-        style={{ fontFamily: "var(--font-display)" }}
-      >
-        Plan Your Trip
-      </h2>
-
+    <div>
       <form onSubmit={handleSubmit(onSearch)} noValidate className="space-y-5">
         {/* Two-column layout: home/date on left (1/3), destinations on right (2/3) */}
         <div className="grid grid-cols-3 gap-x-6 items-start">
@@ -82,7 +77,7 @@ export function FlightSearchForm({ onSearch, isLoading }: FlightSearchFormProps)
           <div className="col-span-1 space-y-5">
             {/* Home airport */}
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-muted">Home Airport</label>
+              <label className="text-sm font-semibold text-foreground">Home Airport</label>
               <Controller
                 control={control}
                 name="homeAirport"
@@ -102,7 +97,7 @@ export function FlightSearchForm({ onSearch, isLoading }: FlightSearchFormProps)
 
             {/* Departure date */}
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-muted">Departure Date</label>
+              <label className="text-sm font-semibold text-foreground">Departure Date</label>
               <Controller
                 control={control}
                 name="departureDate"
@@ -124,7 +119,7 @@ export function FlightSearchForm({ onSearch, isLoading }: FlightSearchFormProps)
                       min={today}
                       value={field.value}
                       onChange={field.onChange}
-                      className="w-full cursor-pointer rounded-xl border border-border/50 bg-background/50 py-2.5 pl-9 pr-4 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all duration-200"
+                      className="w-full cursor-pointer rounded-xl border border-border bg-card py-2.5 pl-9 pr-4 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all duration-200"
                     />
                   </div>
                 )}
@@ -147,7 +142,7 @@ export function FlightSearchForm({ onSearch, isLoading }: FlightSearchFormProps)
           {/* Right column */}
           <div className="col-span-2">
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-muted">Destinations</label>
+              <label className="text-sm font-semibold text-foreground">Destinations</label>
 
               <div className="space-y-2">
                 <AnimatePresence initial={false}>
@@ -168,7 +163,7 @@ export function FlightSearchForm({ onSearch, isLoading }: FlightSearchFormProps)
                 <button
                   type="button"
                   onClick={() => append({ code: "", city: "", days: 3 })}
-                  className="mt-1 w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-border py-2.5 text-sm text-muted hover:text-foreground hover:border-primary/50 transition-colors"
+                  className="mt-1 w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-border py-2.5 text-sm font-medium text-foreground/70 hover:text-foreground hover:border-primary/50 transition-colors"
                 >
                   <Plus className="w-4 h-4" />
                   Add Destination
@@ -188,7 +183,7 @@ export function FlightSearchForm({ onSearch, isLoading }: FlightSearchFormProps)
         <Button
           type="submit"
           variant="primary"
-          disabled={isLoading}
+          disabled={isDisabled}
           className="px-8 py-3 text-base mt-2"
         >
           {isLoading ? (
@@ -199,12 +194,12 @@ export function FlightSearchForm({ onSearch, isLoading }: FlightSearchFormProps)
           ) : (
             <>
               <Search className="w-4 h-4" />
-              Find Best Route
+              Find My Route
             </>
           )}
         </Button>
         </div>
       </form>
-    </Card>
+    </div>
   );
 }

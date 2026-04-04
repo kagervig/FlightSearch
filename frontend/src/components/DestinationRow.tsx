@@ -55,17 +55,17 @@ export function DestinationRow({ control, index, canRemove, onRemove, errors }: 
               <button
                 type="button"
                 onClick={() => daysField.onChange(Math.max(1, daysField.value - 1))}
-                className="w-7 h-7 rounded-lg border border-border/50 text-muted hover:text-foreground hover:border-primary/50 transition-colors flex items-center justify-center text-base leading-none"
+                className="w-7 h-7 rounded-lg border border-border bg-card text-foreground/70 hover:text-foreground hover:border-primary/50 transition-colors flex items-center justify-center text-base leading-none"
               >
                 −
               </button>
-              <span className="w-8 text-center text-sm tabular-nums">
+              <span className="w-8 text-center text-sm font-medium tabular-nums text-foreground">
                 {daysField.value}d
               </span>
               <button
                 type="button"
                 onClick={() => daysField.onChange(Math.min(14, daysField.value + 1))}
-                className="w-7 h-7 rounded-lg border border-border/50 text-muted hover:text-foreground hover:border-primary/50 transition-colors flex items-center justify-center text-base leading-none"
+                className="w-7 h-7 rounded-lg border border-border bg-card text-foreground/70 hover:text-foreground hover:border-primary/50 transition-colors flex items-center justify-center text-base leading-none"
               >
                 +
               </button>

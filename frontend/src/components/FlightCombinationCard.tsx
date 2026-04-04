@@ -6,10 +6,11 @@
  * Expanded: per-leg breakdown with best flight details and alternatives.
  */
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronUp, Plane } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
+import { RouteMap } from "@/components/RouteMap";
 import { cn, formatDuration } from "@/lib/utils";
 
 interface FlightOption {
@@ -26,8 +27,12 @@ interface Leg {
   to: string;
   fromCity: string;
   fromCountry: string;
+  fromLat: number;
+  fromLon: number;
   toCity: string;
   toCountry: string;
+  toLat: number;
+  toLon: number;
   flights: FlightOption[];
 }
 
@@ -63,6 +68,15 @@ export function FlightCombinationCard({
   const [isOpen, setIsOpen] = useState(defaultOpen);
   // tracks which legs have their alternative flights shown
   const [expandedLegs, setExpandedLegs] = useState<Record<number, boolean>>({});
+
+  const airportCoords = useMemo(() => {
+    const map = new Map<string, { code: string; lat: number; lng: number }>();
+    route.legs.forEach((leg) => {
+      map.set(leg.from, { code: leg.from, lat: leg.fromLat, lng: leg.fromLon });
+      map.set(leg.to, { code: leg.to, lat: leg.toLat, lng: leg.toLon });
+    });
+    return Array.from(map.values());
+  }, [route.legs]);
 
   function toggleLeg(index: number) {
     setExpandedLegs((prev) => ({ ...prev, [index]: !prev[index] }));
@@ -121,7 +135,8 @@ export function FlightCombinationCard({
             transition={{ duration: 0.25 }}
             className="overflow-hidden"
           >
-            <div className="px-5 pb-5 space-y-3 border-t border-border/30 pt-4">
+            <div className="px-5 pb-5 space-y-4 border-t border-border/30 pt-4">
+              <RouteMap journey={route.airports} airports={airportCoords} />
               {route.legs.map((leg, legIndex) => {
                 const best =
                   leg.flights.find((f) => f.cheapest) ?? leg.flights[0];

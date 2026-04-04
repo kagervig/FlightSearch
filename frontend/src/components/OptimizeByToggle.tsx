@@ -15,8 +15,8 @@ interface OptimizeByToggleProps {
 export function OptimizeByToggle({ value, onChange }: OptimizeByToggleProps) {
   return (
     <div className="space-y-1.5">
-      <label className="text-sm font-medium text-muted">Optimise By</label>
-      <div className="flex gap-1 rounded-lg border border-border/50 bg-background/30 p-0.5">
+      <label className="text-sm font-semibold text-foreground">Optimise By</label>
+      <div className="flex gap-1 rounded-lg border border-border bg-card p-0.5">
         <Button
           type="button"
           variant="segment"

@@ -19,7 +19,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
         <input
           ref={ref}
           className={cn(
-            "w-full rounded-xl border border-border/50 bg-background/50 py-2.5 text-sm text-foreground placeholder:text-muted",
+            "w-full rounded-xl border border-border bg-card py-2.5 text-sm text-foreground placeholder:text-muted",
             "focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50",
             "transition-all duration-200",
             leftIcon ? "pl-9 pr-4" : "px-4",
