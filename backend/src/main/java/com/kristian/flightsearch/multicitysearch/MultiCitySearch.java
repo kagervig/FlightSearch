@@ -4,11 +4,14 @@ import java.sql.Array;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 
 import com.kristian.flightsearch.datagenerator.FlightGenerator;
@@ -20,6 +23,7 @@ import com.kristian.flightsearch.flightgraph.Dijkstra;
 import com.kristian.flightsearch.flightgraph.FlightGraph;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
+import com.kristian.flightsearch.models.LegQuery;
 import com.kristian.flightsearch.models.Route;
 
 /*
@@ -184,6 +188,117 @@ public class MultiCitySearch {
         }
 
         validRoutes.sort((a, b) -> Integer.compare(a.getCheapestTotalPrice(), b.getCheapestTotalPrice()));
+        return validRoutes;
+    }
+
+    /**
+     * Searches for valid multi-city routes for specific departure dates,
+     * sorted by the given optimizeBy criterion.
+     *
+     * @param homeAirport    The origin/return airport code
+     * @param destinations   Destination airport codes to visit
+     * @param departureDate  Date of the first leg
+     * @param daysAtAirport  Map from airport code to number of full days spent there
+     * @param optimizeBy     "price" or "duration"
+     * @param flightStore    Used to fetch date-specific flights from the database
+     */
+    public ArrayList<Route> searchByDate(String homeAirport, String[] destinations,
+            LocalDate departureDate, Map<String, Integer> daysAtAirport,
+            String optimizeBy, FlightStore flightStore) {
+
+        ArrayList<String[]> validPerms = filterValidPermutations(destinations, homeAirport);
+        if (validPerms.isEmpty()) return new ArrayList<>();
+
+        LinkedHashSet<LegQuery> uniqueLegs = new LinkedHashSet<>();
+        for (String[] perm : validPerms) {
+            LocalDate[] dates = computeLegDates(perm, departureDate, daysAtAirport);
+            for (int i = 0; i < perm.length - 1; i++) {
+                uniqueLegs.add(new LegQuery(perm[i], perm[i + 1], dates[i]));
+            }
+        }
+
+        HashMap<String, ArrayList<Flight>> dateIndex =
+                flightStore.readFlightsForLegs(new ArrayList<>(uniqueLegs));
+        return buildRoutesFromDateIndex(validPerms, departureDate, daysAtAirport, dateIndex, optimizeBy);
+    }
+
+    /**
+     * Same as searchByDate but accepts a pre-built date-keyed index instead of
+     * querying the database. Used in tests.
+     */
+    ArrayList<Route> searchByDateWithIndex(String homeAirport, String[] destinations,
+            LocalDate departureDate, Map<String, Integer> daysAtAirport,
+            String optimizeBy, HashMap<String, ArrayList<Flight>> dateIndex) {
+
+        ArrayList<String[]> validPerms = filterValidPermutations(destinations, homeAirport);
+        if (validPerms.isEmpty()) return new ArrayList<>();
+        return buildRoutesFromDateIndex(validPerms, departureDate, daysAtAirport, dateIndex, optimizeBy);
+    }
+
+    /**
+     * Computes the departure date for each leg of a route permutation.
+     * The offset between consecutive legs is daysAtAirport[stopover] + 1,
+     * where +1 accounts for the arrival day not counting as a full day.
+     *
+     * @param airports       Full route array including home at start and end
+     * @param departureDate  Date of the first leg
+     * @param daysAtAirport  Map from airport code to number of full days spent there
+     * @return Array of departure dates, one per leg (length = airports.length - 1)
+     */
+    public static LocalDate[] computeLegDates(String[] airports, LocalDate departureDate,
+            Map<String, Integer> daysAtAirport) {
+        LocalDate[] dates = new LocalDate[airports.length - 1];
+        LocalDate current = departureDate;
+        for (int i = 0; i < airports.length - 1; i++) {
+            dates[i] = current;
+            if (i < airports.length - 2) {
+                int days = daysAtAirport.getOrDefault(airports[i + 1], 0);
+                current = current.plusDays(days + 1);
+            }
+        }
+        return dates;
+    }
+
+    private ArrayList<String[]> filterValidPermutations(String[] destinations, String homeAirport) {
+        ArrayList<String[]> all = flightCombinations(destinations, homeAirport);
+        all.removeIf(perm -> !hasFlightsForAllLegs(perm, flightIndex));
+        return all;
+    }
+
+    private static ArrayList<Route> buildRoutesFromDateIndex(ArrayList<String[]> perms,
+            LocalDate departureDate, Map<String, Integer> daysAtAirport,
+            HashMap<String, ArrayList<Flight>> dateIndex, String optimizeBy) {
+
+        ArrayList<Route> validRoutes = new ArrayList<>();
+
+        for (String[] perm : perms) {
+            LocalDate[] dates = computeLegDates(perm, departureDate, daysAtAirport);
+            ArrayList<ArrayList<Flight>> routeFlights = new ArrayList<>();
+            boolean routeValid = true;
+
+            for (int i = 0; i < perm.length - 1; i++) {
+                String key = perm[i] + perm[i + 1] + dates[i].toString();
+                ArrayList<Flight> flights = dateIndex.get(key);
+                if (flights == null || flights.isEmpty()) {
+                    routeValid = false;
+                    break;
+                }
+                routeFlights.add(flights);
+            }
+
+            if (routeValid) {
+                validRoutes.add(new Route(perm, routeFlights));
+            }
+        }
+
+        if ("duration".equalsIgnoreCase(optimizeBy)) {
+            validRoutes.sort((a, b) ->
+                    Long.compare(a.getShortestTotalDurationMinutes(), b.getShortestTotalDurationMinutes()));
+        } else {
+            validRoutes.sort((a, b) ->
+                    Integer.compare(a.getCheapestTotalPrice(), b.getCheapestTotalPrice()));
+        }
+
         return validRoutes;
     }
 

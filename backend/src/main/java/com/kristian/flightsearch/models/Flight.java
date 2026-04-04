@@ -16,6 +16,8 @@ public class Flight {
     String flightNumber;
     Duration duration;
     Integer price;
+    String airlineName;
+    String aircraftName;
     private static final String[] AIRLINE_CODES = {
         // North America
         "AA", "UA", "DL", "WN", "B6", "AS", "NK", "F9", "G4", "SY",
@@ -106,6 +108,22 @@ public class Flight {
 
     public void setFlightNumber(String flightNumber) {
         this.flightNumber = flightNumber;
+    }
+
+    public String getAirlineName() {
+        return airlineName;
+    }
+
+    public void setAirlineName(String airlineName) {
+        this.airlineName = airlineName;
+    }
+
+    public String getAircraftName() {
+        return aircraftName;
+    }
+
+    public void setAircraftName(String aircraftName) {
+        this.aircraftName = aircraftName;
     }
 
     public void setDistance(int distance) {

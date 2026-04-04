@@ -42,11 +42,14 @@ interface FlightOption {
   arrivalTime: string;
   durationMinutes: number;
   cheapest: boolean;
+  airlineName: string | null;
+  aircraftName: string | null;
 }
 
 interface Leg {
   from: string;
   to: string;
+  date: string;
   fromCity: string;
   fromCountry: string;
   toCity: string;
@@ -57,6 +60,7 @@ interface Leg {
 interface Route {
   airports: string[];
   cheapestTotalPrice: number;
+  shortestTotalDurationMinutes: number;
   legs: Leg[];
 }
 
@@ -74,6 +78,8 @@ export default function Home() {
   const [destinations, setDestinations] = useState<string[]>([
     "",                                                      // Array of destination airport codes
   ]);
+  const [departureDate, setDepartureDate] = useState("");
+  const [daysAtEachDestination, setDaysAtEachDestination] = useState<number[]>([3]);
   const [optimizeBy, setOptimizeBy] = useState<"price" | "duration">("price");  // Optimization mode
   const [loading, setLoading] = useState(false);            // Is API call in progress?
   const [results, setResults] = useState<SearchResult | null>(null);  // API response
@@ -89,6 +95,21 @@ export default function Home() {
       newDestinations.pop();
     }
     setDestinations(newDestinations);
+
+    const newDays = [...daysAtEachDestination];
+    while (newDays.length < num) {
+      newDays.push(3);
+    }
+    while (newDays.length > num) {
+      newDays.pop();
+    }
+    setDaysAtEachDestination(newDays);
+  };
+
+  const updateDaysAtDestination = (index: number, value: number) => {
+    const newDays = [...daysAtEachDestination];
+    newDays[index] = value;
+    setDaysAtEachDestination(newDays);
   };
 
   const updateDestination = (index: number, value: string) => {
@@ -135,6 +156,11 @@ export default function Home() {
       return;
     }
 
+    if (!departureDate) {
+      setError("Please enter a departure date");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setResults(null);
@@ -143,8 +169,9 @@ export default function Home() {
 
     try {
       const destinationsParam = selectedCities.join(",");
+      const daysParam = daysAtEachDestination.slice(0, selectedCities.length).join(",");
       const response = await fetch(
-        `${API_URL}/api/flights/multicity?from=${homeCity.toUpperCase()}&destinations=${destinationsParam}`
+        `${API_URL}/api/flights/multicity?from=${homeCity.toUpperCase()}&destinations=${destinationsParam}&departureDate=${departureDate}&daysAtEachDestination=${daysParam}&optimizeBy=${optimizeBy}`
       );
 
       if (!response.ok) {
@@ -249,6 +276,21 @@ export default function Home() {
                   />
                 </div>
 
+                {/* Departure Date */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">
+                    Departure Date
+                  </label>
+                  <input
+                    type="date"
+                    value={departureDate}
+                    min="2026-04-01"
+                    max="2026-05-31"
+                    onChange={(e) => setDepartureDate(e.target.value)}
+                    className="w-full px-4 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  />
+                </div>
+
                 {/* Destinations */}
                 <div>
                   <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-3">
@@ -256,16 +298,28 @@ export default function Home() {
                   </label>
                   <div className="space-y-3">
                     {destinations.map((dest, index) => (
-                      <div key={index} className="flex gap-3 items-center">
-                        <div className="w-8 h-8 rounded-full bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-400 flex items-center justify-center text-sm font-semibold flex-shrink-0">
+                      <div key={index} className="flex gap-3 items-start">
+                        <div className="w-8 h-8 rounded-full bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-400 flex items-center justify-center text-sm font-semibold flex-shrink-0 mt-3">
                           {index + 1}
                         </div>
-                        <div className="flex-1">
+                        <div className="flex-1 space-y-2">
                           <AirportAutocomplete
                             value={dest}
                             onSelect={(code) => updateDestination(index, code)}
                             placeholder="Search by city or type code (e.g. LAX)"
                           />
+                          <div className="flex items-center gap-2">
+                            <label className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                              Days to spend:
+                            </label>
+                            <input
+                              type="number"
+                              min={1}
+                              value={daysAtEachDestination[index] ?? 3}
+                              onChange={(e) => updateDaysAtDestination(index, Math.max(1, parseInt(e.target.value) || 1))}
+                              className="w-20 px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                            />
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -335,14 +389,16 @@ export default function Home() {
                       </div>
                     ) : (
                       <>
-                        {/* Cheapest route */}
+                        {/* Best route */}
                         <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
                           <div className="flex justify-between items-center mb-4">
                             <h3 className="font-semibold text-slate-900 dark:text-white">
                               Best Route
                             </h3>
                             <span className="text-lg font-bold text-sky-600 dark:text-sky-400">
-                              ${results.routes[0].cheapestTotalPrice}
+                              {optimizeBy === "duration"
+                                ? formatDuration(results.routes[0].shortestTotalDurationMinutes)
+                                : `$${results.routes[0].cheapestTotalPrice}`}
                             </span>
                           </div>
 
@@ -362,9 +418,16 @@ export default function Home() {
                                     onClick={() => toggleLeg(legKey)}
                                     className="w-full flex justify-between items-center cursor-pointer"
                                   >
-                                    <span className="font-medium text-slate-900 dark:text-white">
-                                      {leg.from} → {leg.to}
-                                    </span>
+                                    <div className="text-left">
+                                      <span className="font-medium text-slate-900 dark:text-white">
+                                        {leg.from} → {leg.to}
+                                      </span>
+                                      {leg.date && (
+                                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                          {new Date(leg.date + "T00:00:00").toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" })}
+                                        </div>
+                                      )}
+                                    </div>
                                     <span className="font-semibold text-sky-600 dark:text-sky-400">
                                       ${cheapestFlight.price}
                                     </span>
@@ -396,6 +459,7 @@ export default function Home() {
                                           </div>
                                           <div className="text-xs text-slate-500 dark:text-slate-400 space-y-0.5">
                                             <div>{formatTime(f.departureTime)} → {formatTime(f.arrivalTime)} · {formatDuration(f.durationMinutes)}</div>
+                                            {f.airlineName && <div>{f.airlineName}{f.aircraftName ? ` · ${f.aircraftName}` : ""}</div>}
                                             {leg.fromCity && leg.toCity && (
                                               <div>{leg.fromCity}, {leg.fromCountry} → {leg.toCity}, {leg.toCountry}</div>
                                             )}
@@ -429,7 +493,9 @@ export default function Home() {
                                         {route.airports.join(" → ")}
                                       </span>
                                       <span className="font-semibold text-slate-700 dark:text-slate-300">
-                                        ${route.cheapestTotalPrice}
+                                        {optimizeBy === "duration"
+                                          ? formatDuration(route.shortestTotalDurationMinutes)
+                                          : `$${route.cheapestTotalPrice}`}
                                       </span>
                                     </div>
                                     <div className="space-y-1">

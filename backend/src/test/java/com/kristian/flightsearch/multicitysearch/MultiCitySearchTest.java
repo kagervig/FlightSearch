@@ -7,10 +7,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -188,5 +190,154 @@ class MultiCitySearchTest {
     @DisplayName("hasFlightsForAllLegs returns false for a single-leg route when the leg is absent")
     void hasFlightsForAllLegsReturnsFalseForMissingSingleLeg() {
         assertFalse(MultiCitySearch.hasFlightsForAllLegs(new String[]{"JFK", "AMS"}, flightIndex));
+    }
+
+    // -----------------------------------------------------------------------
+    // searchByDate tests
+    //
+    // Setup: departureDate = 2026-04-15, destinations = [LHR, CDG] from JFK
+    //   daysAtAirport: LHR=3, CDG=2
+    //
+    // Permutation JFK→LHR→CDG→JFK:
+    //   JFK→LHR on 2026-04-15
+    //   LHR→CDG on 2026-04-19  (Apr15 + 3 days + 1)
+    //   CDG→JFK on 2026-04-22  (Apr19 + 2 days + 1)
+    //
+    // Permutation JFK→CDG→LHR→JFK:
+    //   JFK→CDG on 2026-04-15
+    //   CDG→LHR on 2026-04-18  (Apr15 + 2 days + 1)
+    //   LHR→JFK on 2026-04-22  (Apr18 + 3 days + 1)
+    // -----------------------------------------------------------------------
+
+    private static final LocalDate DEPARTURE = LocalDate.of(2026, 4, 15);
+
+    private HashMap<String, ArrayList<Flight>> buildDateKeyedIndex() {
+        HashMap<String, ArrayList<Flight>> idx = new HashMap<>();
+        idx.put("JFKLHR2026-04-15", new ArrayList<>(List.of(jfkLhr())));
+        idx.put("LHRCDG2026-04-19", new ArrayList<>(List.of(lhrCdg())));
+        idx.put("CDGJFK2026-04-22", new ArrayList<>(List.of(cdgJfk())));
+        idx.put("JFKCDG2026-04-15", new ArrayList<>(List.of(jfkCdg())));
+        idx.put("CDGLHR2026-04-18", new ArrayList<>(List.of(cdgLhr())));
+        idx.put("LHRJFK2026-04-22", new ArrayList<>(List.of(lhrJfk())));
+        return idx;
+    }
+
+    private Flight jfkLhr() {
+        Flight f = new Flight(jfk, lhr, 5570.0, LocalTime.of(9, 0), "AA100");
+        f.setPrice(300);
+        return f;
+    }
+    private Flight lhrCdg() {
+        Flight f = new Flight(lhr, cdg, 344.0, LocalTime.of(14, 0), "BA302");
+        f.setPrice(100);
+        return f;
+    }
+    private Flight cdgJfk() {
+        Flight f = new Flight(cdg, jfk, 5837.0, LocalTime.of(16, 0), "AF006");
+        f.setPrice(350);
+        return f;
+    }
+    private Flight lhrJfk() {
+        Flight f = new Flight(lhr, jfk, 5570.0, LocalTime.of(11, 0), "AA101");
+        f.setPrice(320);
+        return f;
+    }
+    private Flight jfkCdg() {
+        Flight f = new Flight(jfk, cdg, 5837.0, LocalTime.of(8, 0), "AF007");
+        f.setPrice(280);
+        return f;
+    }
+    private Flight cdgLhr() {
+        Flight f = new Flight(cdg, lhr, 344.0, LocalTime.of(12, 0), "BA303");
+        f.setPrice(90);
+        return f;
+    }
+
+    @Test
+    @DisplayName("searchByDate returns valid routes when all legs have flights on correct dates")
+    void searchByDateReturnsRoutesWhenAllLegsPresent() {
+        MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
+        Map<String, Integer> days = Map.of("LHR", 3, "CDG", 2);
+
+        ArrayList<Route> routes = mcs.searchByDateWithIndex(
+                "JFK", new String[]{"LHR", "CDG"}, DEPARTURE, days, "price", buildDateKeyedIndex());
+
+        assertFalse(routes.isEmpty());
+    }
+
+    @Test
+    @DisplayName("searchByDate excludes permutations where a leg has no flights on its required date")
+    void searchByDateExcludesPermutationWithMissingLegOnDate() {
+        // Only stock JFK→LHR→CDG→JFK dates; CDG→LHR and LHR→JFK are absent
+        HashMap<String, ArrayList<Flight>> partialIndex = new HashMap<>();
+        partialIndex.put("JFKLHR2026-04-15", new ArrayList<>(List.of(jfkLhr())));
+        partialIndex.put("LHRCDG2026-04-19", new ArrayList<>(List.of(lhrCdg())));
+        partialIndex.put("CDGJFK2026-04-22", new ArrayList<>(List.of(cdgJfk())));
+
+        MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
+        Map<String, Integer> days = Map.of("LHR", 3, "CDG", 2);
+
+        ArrayList<Route> routes = mcs.searchByDateWithIndex(
+                "JFK", new String[]{"LHR", "CDG"}, DEPARTURE, days, "price", partialIndex);
+
+        assertEquals(1, routes.size());
+        assertArrayEquals(new String[]{"JFK", "LHR", "CDG", "JFK"}, routes.get(0).getAirports());
+    }
+
+    @Test
+    @DisplayName("searchByDate returns empty list when no legs have flights on their required dates")
+    void searchByDateReturnsEmptyWhenNoFlightsOnDates() {
+        MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
+        Map<String, Integer> days = Map.of("LHR", 3, "CDG", 2);
+
+        ArrayList<Route> routes = mcs.searchByDateWithIndex(
+                "JFK", new String[]{"LHR", "CDG"}, DEPARTURE, days, "price", new HashMap<>());
+
+        assertTrue(routes.isEmpty());
+    }
+
+    @Test
+    @DisplayName("searchByDate sorts by cheapest total price when optimizeBy is price")
+    void searchByDateSortsByPriceWhenOptimizeByPrice() {
+        MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
+        Map<String, Integer> days = Map.of("LHR", 3, "CDG", 2);
+
+        ArrayList<Route> routes = mcs.searchByDateWithIndex(
+                "JFK", new String[]{"LHR", "CDG"}, DEPARTURE, days, "price", buildDateKeyedIndex());
+
+        assertTrue(routes.size() > 1);
+        for (int i = 0; i < routes.size() - 1; i++) {
+            assertTrue(routes.get(i).getCheapestTotalPrice() <= routes.get(i + 1).getCheapestTotalPrice());
+        }
+    }
+
+    @Test
+    @DisplayName("searchByDate sorts by shortest total duration when optimizeBy is duration")
+    void searchByDateSortsByDurationWhenOptimizeByDuration() {
+        MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
+        Map<String, Integer> days = Map.of("LHR", 3, "CDG", 2);
+
+        ArrayList<Route> routes = mcs.searchByDateWithIndex(
+                "JFK", new String[]{"LHR", "CDG"}, DEPARTURE, days, "duration", buildDateKeyedIndex());
+
+        assertTrue(routes.size() > 1);
+        for (int i = 0; i < routes.size() - 1; i++) {
+            assertTrue(routes.get(i).getShortestTotalDurationMinutes()
+                    <= routes.get(i + 1).getShortestTotalDurationMinutes());
+        }
+    }
+
+    @Test
+    @DisplayName("computeLegDates assigns correct dates based on days at each airport")
+    void computeLegDatesAssignsCorrectDates() {
+        // JFK→LHR→CDG→JFK, 3 days at LHR, 2 days at CDG
+        String[] perm = {"JFK", "LHR", "CDG", "JFK"};
+        Map<String, Integer> days = Map.of("LHR", 3, "CDG", 2);
+
+        LocalDate[] dates = MultiCitySearch.computeLegDates(perm, DEPARTURE, days);
+
+        assertEquals(LocalDate.of(2026, 4, 15), dates[0]); // JFK→LHR
+        assertEquals(LocalDate.of(2026, 4, 19), dates[1]); // LHR→CDG (15 + 3 + 1)
+        assertEquals(LocalDate.of(2026, 4, 22), dates[2]); // CDG→JFK (19 + 2 + 1)
     }
 }

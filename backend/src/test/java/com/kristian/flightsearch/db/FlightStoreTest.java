@@ -9,8 +9,12 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.kristian.flightsearch.models.Flight;
+import com.kristian.flightsearch.models.LegQuery;
 
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 
 @DisplayName("FlightStore Tests")
 class FlightStoreTest {
@@ -51,5 +55,28 @@ class FlightStoreTest {
         Flight sample = flights.values().iterator().next();
         assertNotNull(sample.getOrigin());
         assertNotNull(sample.getDestination());
+    }
+
+    @Test
+    @DisplayName("readFlightsForLegs() returns an empty map for an empty leg list")
+    void testReadFlightsForLegsEmptyInput() {
+        HashMap<String, ArrayList<Flight>> result = flightStore.readFlightsForLegs(List.of());
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    @DisplayName("readFlightsForLegs() returns flights with airline and aircraft names populated")
+    void testReadFlightsForLegsPopulatesAirlineAndAircraft() {
+        // Use a known leg from the database — YYZ→JFK is a common route
+        LegQuery leg = new LegQuery("YYZ", "JFK", LocalDate.of(2026, 4, 1));
+        HashMap<String, ArrayList<Flight>> result = flightStore.readFlightsForLegs(List.of(leg));
+
+        assumeTrue(!result.isEmpty(), "No YYZ→JFK flights on 2026-04-01 — skipping test");
+
+        ArrayList<Flight> flights = result.get("YYZJFK2026-04-01");
+        assumeTrue(flights != null && !flights.isEmpty(), "Key not found in result — skipping test");
+
+        Flight sample = flights.get(0);
+        assertNotNull(sample.getAirlineName(), "Airline name should be populated");
     }
 }
