@@ -19,6 +19,8 @@ package com.kristian.flightsearch;
  *   3. Listens for HTTP requests and responds with JSON data
  */
 
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -49,8 +51,13 @@ public class Server {
     // This is efficient because we don't reload data for every request
     private static FlightGraph flightNetwork; // Graph structure: airports connected by flights
     private static AirportStore airportStore; // Provides airport lookup by code
+    private static FlightStore flightStore;   // Handles database queries for date-specific flights
     private static HashMap<String, Flight> flightList; // All flights indexed by flight number
     private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFK-LAX")
+
+    // The DB contains flights for April–May 2026 only
+    private static final LocalDate DB_MIN_DATE = LocalDate.of(2026, 4, 1);
+    private static final LocalDate DB_MAX_DATE = LocalDate.of(2026, 5, 31);
 
     public static void main(String[] args) {
         // Step 1: Load all flight data before starting the server
@@ -133,7 +140,8 @@ public class Server {
 
         flightNetwork = FlightGraph.initalizeFlightGraph(airports);
 
-        flightList = new FlightStore(DatabaseManager.getDataSource(), airportStore).readFlights();
+        flightStore = new FlightStore(DatabaseManager.getDataSource(), airportStore);
+        flightList = flightStore.readFlights();
 
         // Create an index of flights by route (e.g., "JFK-LAX" -> [flight1, flight2, ...])
         // This makes searching for flights between two airports O(1) instead of O(n)
@@ -430,13 +438,15 @@ public class Server {
     }
 
     /**
-     * GET /api/flights/multicity?from=YYZ&destinations=JFK,LAX,FCO
-     * Permutes destination order, finds all valid routes, and returns flights per
-     * leg.
+     * GET /api/flights/multicity?from=YYZ&destinations=JFK,LAX&departureDate=2026-04-15&daysAtEachDestination=3,4&optimizeBy=price
+     * Permutes destination order, finds valid routes on the specified dates, and returns flights per leg.
      */
     private static void searchMultiCity(Context ctx) {
         String from = ctx.queryParam("from");
         String destinationsParam = ctx.queryParam("destinations");
+        String departureDateParam = ctx.queryParam("departureDate");
+        String daysParam = ctx.queryParam("daysAtEachDestination");
+        String optimizeBy = ctx.queryParam("optimizeBy");
 
         if (from == null) {
             ctx.status(400).json(Map.of("error", "Please add a home airport"));
@@ -446,13 +456,30 @@ public class Server {
             ctx.status(400).json(Map.of("error", "Please enter a destination airport"));
             return;
         }
+        if (departureDateParam == null) {
+            ctx.status(400).json(Map.of("error", "Please enter a departure date"));
+            return;
+        }
+        if (daysParam == null) {
+            ctx.status(400).json(Map.of("error", "Please enter days to spend at each destination"));
+            return;
+        }
+
+        from = from.trim().toUpperCase();
+
         if (!airportStore.isValidAirportCode(from)) {
             ctx.status(400).json(Map.of("error", "Airport not supported: " + from));
             return;
         }
+
         String[] destinations = destinationsParam.split(",");
         for (int i = 0; i < destinations.length; i++) {
             destinations[i] = destinations[i].trim().toUpperCase();
+        }
+
+        if (destinations.length < 1 || destinations.length > 5) {
+            ctx.status(400).json(Map.of("error", "Must have between 1 and 5 destinations"));
+            return;
         }
 
         for (String dest : destinations) {
@@ -462,20 +489,59 @@ public class Server {
             }
         }
 
-        from = from.trim().toUpperCase();
-        destinations = destinationsParam.split(",");
-        for (int i = 0; i < destinations.length; i++) {
-            destinations[i] = destinations[i].trim().toUpperCase();
-        }
-
-        if (destinations.length < 1 || destinations.length > 5) {
-            ctx.status(400).json(Map.of("error", "Must have between 1 and 5 destinations"));
+        LocalDate departureDate;
+        try {
+            departureDate = LocalDate.parse(departureDateParam.trim());
+        } catch (DateTimeParseException e) {
+            ctx.status(400).json(Map.of("error", "Invalid departure date format — use YYYY-MM-DD"));
             return;
         }
-        //change "search" to "dijkstraFlightSearch" to change searching algorithm
+
+        String[] dayTokens = daysParam.split(",");
+        if (dayTokens.length != destinations.length) {
+            ctx.status(400).json(Map.of("error",
+                    "daysAtEachDestination must have one value per destination (" + destinations.length + " expected)"));
+            return;
+        }
+
+        Map<String, Integer> daysAtAirport = new HashMap<>();
+        for (int i = 0; i < destinations.length; i++) {
+            int days;
+            try {
+                days = Integer.parseInt(dayTokens[i].trim());
+            } catch (NumberFormatException e) {
+                ctx.status(400).json(Map.of("error", "daysAtEachDestination values must be integers"));
+                return;
+            }
+            if (days < 1) {
+                ctx.status(400).json(Map.of("error", "Days at each destination must be at least 1"));
+                return;
+            }
+            daysAtAirport.put(destinations[i], days);
+        }
+
+        if (departureDate.isBefore(DB_MIN_DATE) || departureDate.isAfter(DB_MAX_DATE)) {
+            ctx.status(400).json(Map.of("error",
+                    "Departure date must be between " + DB_MIN_DATE + " and " + DB_MAX_DATE));
+            return;
+        }
+
+        int totalDays = daysAtAirport.values().stream().mapToInt(Integer::intValue).sum() + destinations.length;
+        LocalDate latestDate = departureDate.plusDays(totalDays);
+        if (latestDate.isAfter(DB_MAX_DATE)) {
+            ctx.status(400).json(Map.of("error",
+                    "Trip extends beyond available data — last flight date would be " + latestDate +
+                    " but data only goes to " + DB_MAX_DATE));
+            return;
+        }
+
+        if (optimizeBy == null || (!optimizeBy.equalsIgnoreCase("price") && !optimizeBy.equalsIgnoreCase("duration"))) {
+            optimizeBy = "price";
+        }
+
         MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, flightIndex);
-        ArrayList<Route> validRoutes = multiCitySearch.search(from, destinations);
-        //validRoutes = MultiCitySearch.dijkstraFlightSearch(from, destinations, flightNetwork, flightIndex);
+        ArrayList<Route> validRoutes = multiCitySearch.searchByDate(
+                from, destinations, departureDate, daysAtAirport, optimizeBy, flightStore);
 
         if (validRoutes.isEmpty()) {
             ctx.json(Map.of("from", from, "routes", new ArrayList<>()));
@@ -487,15 +553,18 @@ public class Server {
             Map<String, Object> routeMap = new HashMap<>();
             routeMap.put("airports", route.getAirports());
             routeMap.put("cheapestTotalPrice", route.getCheapestTotalPrice());
+            routeMap.put("shortestTotalDurationMinutes", route.getShortestTotalDurationMinutes());
 
             List<Map<String, Object>> legs = new ArrayList<>();
             String[] airports = route.getAirports();
             ArrayList<ArrayList<Flight>> allFlights = route.getFlights();
+            LocalDate[] legDates = MultiCitySearch.computeLegDates(airports, departureDate, daysAtAirport);
 
             for (int i = 0; i < allFlights.size(); i++) {
                 Map<String, Object> leg = new HashMap<>();
                 leg.put("from", airports[i]);
                 leg.put("to", airports[i + 1]);
+                leg.put("date", legDates[i].toString());
 
                 ArrayList<Flight> legFlights = allFlights.get(i);
                 Flight sampleFlight = legFlights.get(0);
@@ -507,12 +576,10 @@ public class Server {
                 leg.put("toCountry", sampleFlight.getDestination().getCountry());
                 leg.put("toLat", sampleFlight.getDestination().getLat());
                 leg.put("toLon", sampleFlight.getDestination().getLon());
-                // find cheapest price for this leg
+
                 int cheapestPrice = Integer.MAX_VALUE;
                 for (Flight f : legFlights) {
-                    if (f.getPrice() < cheapestPrice) {
-                        cheapestPrice = f.getPrice();
-                    }
+                    if (f.getPrice() < cheapestPrice) cheapestPrice = f.getPrice();
                 }
 
                 List<Map<String, Object>> flightData = new ArrayList<>();
@@ -524,6 +591,8 @@ public class Server {
                     fd.put("arrivalTime", f.getArrivalTime().toString());
                     fd.put("durationMinutes", f.getDuration().toMinutes());
                     fd.put("cheapest", f.getPrice() == cheapestPrice);
+                    fd.put("airlineName", f.getAirlineName());
+                    fd.put("aircraftName", f.getAircraftName());
                     flightData.add(fd);
                 }
                 leg.put("flights", flightData);

@@ -33,12 +33,11 @@ interface SearchResult {
 
 async function fetchRoutes(values: SearchFormValues): Promise<SearchResult> {
   const from = values.homeAirport.code.toUpperCase();
-  const destinations = values.destinations
-    .map((d) => d.code.toUpperCase())
-    .join(",");
+  const destinations = values.destinations.map((d) => d.code.toUpperCase()).join(",");
+  const days = values.destinations.map((d) => d.days).join(",");
 
   const res = await fetch(
-    `${API_URL}/api/flights/multicity?from=${from}&destinations=${destinations}`
+    `${API_URL}/api/flights/multicity?from=${from}&destinations=${destinations}&departureDate=${values.departureDate}&daysAtEachDestination=${days}&optimizeBy=${values.optimizeBy}`
   );
 
   if (!res.ok) {
