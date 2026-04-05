@@ -8,8 +8,9 @@
 
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, Plane, AlertTriangle } from "lucide-react";
+import { ChevronDown, ChevronUp, Plane, AlertTriangle, X } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { RouteMap } from "@/components/RouteMap";
 import { cn, formatDuration } from "@/lib/utils";
 
@@ -119,6 +120,7 @@ export function FlightCombinationCard({
   defaultOpen = false,
 }: FlightCombinationCardProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
+  const [bookingModalOpen, setBookingModalOpen] = useState(false);
   // tracks which legs have their alternative flights shown
   const [expandedLegs, setExpandedLegs] = useState<Record<number, boolean>>({});
 
@@ -166,6 +168,17 @@ export function FlightCombinationCard({
         <span className="shrink-0 font-bold text-primary text-base">
           ${route.cheapestTotalPrice}
         </span>
+
+        {/* Book button */}
+        <Button
+          className="shrink-0 px-3 py-1.5 text-xs"
+          onClick={(e) => {
+            e.stopPropagation();
+            setBookingModalOpen(true);
+          }}
+        >
+          Book
+        </Button>
 
         {/* Toggle icon */}
         <span className="shrink-0 text-muted">
@@ -366,6 +379,53 @@ export function FlightCombinationCard({
                 );
               })}
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Booking unavailable modal */}
+      <AnimatePresence>
+        {bookingModalOpen && (
+          <motion.div
+            key="booking-modal-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => setBookingModalOpen(false)}
+          >
+            <motion.div
+              key="booking-modal"
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              transition={{ duration: 0.2 }}
+              className="glass rounded-2xl p-6 max-w-sm w-full shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4 mb-3">
+                <h2 className="text-base font-semibold">Booking Coming Soon</h2>
+                <button
+                  type="button"
+                  onClick={() => setBookingModalOpen(false)}
+                  className="text-muted hover:text-foreground transition-colors"
+                  aria-label="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-sm text-muted">
+                Sorry, we can&apos;t facilitate bookings at this time, but we&apos;re working to
+                bring it to you soon.
+              </p>
+              <Button
+                className="mt-5 w-full"
+                onClick={() => setBookingModalOpen(false)}
+              >
+                Got it
+              </Button>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
