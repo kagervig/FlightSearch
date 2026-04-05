@@ -586,15 +586,19 @@ public class Server {
                 }
 
                 ArrayList<Flight> legFlights = allFlights.get(i);
-                Flight sampleFlight = legFlights.get(0);
-                leg.put("fromCity", sampleFlight.getOrigin().getCity());
-                leg.put("fromCountry", sampleFlight.getOrigin().getCountry());
-                leg.put("fromLat", sampleFlight.getOrigin().getLat());
-                leg.put("fromLon", sampleFlight.getOrigin().getLon());
-                leg.put("toCity", sampleFlight.getDestination().getCity());
-                leg.put("toCountry", sampleFlight.getDestination().getCountry());
-                leg.put("toLat", sampleFlight.getDestination().getLat());
-                leg.put("toLon", sampleFlight.getDestination().getLon());
+                // Resolve airport metadata from the store using the leg's airport codes,
+                // not from the flight object — flight templates can have wrong cities when
+                // flight numbers are shared across routes in the seed data.
+                Airport fromAirport = airportStore.getAirportByCode(airports[i]);
+                Airport toAirport = airportStore.getAirportByCode(airports[i + 1]);
+                leg.put("fromCity", fromAirport != null ? fromAirport.getCity() : "");
+                leg.put("fromCountry", fromAirport != null ? fromAirport.getCountry() : "");
+                leg.put("fromLat", fromAirport != null ? fromAirport.getLat() : 0.0);
+                leg.put("fromLon", fromAirport != null ? fromAirport.getLon() : 0.0);
+                leg.put("toCity", toAirport != null ? toAirport.getCity() : "");
+                leg.put("toCountry", toAirport != null ? toAirport.getCountry() : "");
+                leg.put("toLat", toAirport != null ? toAirport.getLat() : 0.0);
+                leg.put("toLon", toAirport != null ? toAirport.getLon() : 0.0);
 
                 int cheapestPrice = Integer.MAX_VALUE;
                 for (Flight f : legFlights) {
