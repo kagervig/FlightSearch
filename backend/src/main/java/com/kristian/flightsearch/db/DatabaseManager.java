@@ -23,7 +23,10 @@ public class DatabaseManager {
     private static HikariDataSource dataSource;
 
     private static final String[] MIGRATIONS = {
-            "db/001_create_flights.sql"
+            "db/001_create_planes.sql",
+            "db/002_create_airports.sql",
+            "db/003_create_airlines.sql",
+            "db/004_create_flights.sql"
     };
 
     public static void initialize() {
