@@ -27,6 +27,8 @@ frontend/next-env.d.ts
 
 # Large data files
 backend/data/flights.csv
+flightsearch.dump
+
 
 # Debug logs
 npm-debug.log*
