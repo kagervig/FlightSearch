@@ -55,6 +55,9 @@ public class Server {
     private static HashMap<String, Flight> flightList; // All flights indexed by flight number
     private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFK-LAX")
 
+    private static final RateLimiter MULTICITY_LIMITER = new RateLimiter(2, 60_000);
+    private static final RateLimiter DEFAULT_LIMITER   = new RateLimiter(3, 60_000);
+
     // The DB contains flights for April–May 2026 only
     private static final LocalDate DB_MIN_DATE = LocalDate.of(2026, 4, 1);
     private static final LocalDate DB_MAX_DATE = LocalDate.of(2026, 5, 31);
@@ -74,6 +77,25 @@ public class Server {
             config.bundledPlugins.enableCors(cors -> {
                 cors.addRule(rule -> rule.anyHost()); // Allow requests from any domain
             });
+        });
+
+        // Reject requests that exceed the per-IP rate limit before they reach any handler.
+        // Render sits behind a load balancer, so the real client IP is in X-Forwarded-For.
+        app.before(ctx -> {
+            String ip = ctx.header("X-Forwarded-For");
+            if (ip != null && !ip.isBlank()) {
+                ip = ip.split(",")[0].trim();
+            } else {
+                ip = ctx.ip();
+            }
+
+            boolean isMultiCity = ctx.path().equals("/api/flights/multicity");
+            RateLimiter limiter = isMultiCity ? MULTICITY_LIMITER : DEFAULT_LIMITER;
+
+            if (!limiter.isAllowed(ip)) {
+                ctx.status(429).json(Map.of("error", "Too many requests — please wait a moment and try again"));
+                ctx.skipRemainingHandlers();
+            }
         });
 
         // Step 4: Define routes (endpoints)
