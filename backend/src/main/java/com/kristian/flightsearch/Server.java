@@ -51,16 +51,16 @@ public class Server {
     // This is efficient because we don't reload data for every request
     private static FlightGraph flightNetwork; // Graph structure: airports connected by flights
     private static AirportStore airportStore; // Provides airport lookup by code
-    private static FlightStore flightStore;   // Handles database queries for date-specific flights
+    private static FlightStore flightStore; // Handles database queries for date-specific flights
     private static HashMap<String, Flight> flightList; // All flights indexed by flight number
     private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFK-LAX")
 
     private static final RateLimiter MULTICITY_LIMITER = new RateLimiter(2, 60_000);
-    private static final RateLimiter DEFAULT_LIMITER   = new RateLimiter(3, 60_000);
+    private static final RateLimiter DEFAULT_LIMITER = new RateLimiter(3, 60_000);
 
     // The DB contains flights for April–May 2026 only
-    private static final LocalDate DB_MIN_DATE = LocalDate.of(2026, 4, 1);
-    private static final LocalDate DB_MAX_DATE = LocalDate.of(2026, 5, 31);
+    private static final LocalDate DB_MIN_DATE = LocalDate.of(2026, 7, 1);
+    private static final LocalDate DB_MAX_DATE = LocalDate.of(2026, 8, 31);
 
     public static void main(String[] args) {
         // Step 1: Load all flight data before starting the server
@@ -79,8 +79,10 @@ public class Server {
             });
         });
 
-        // Reject requests that exceed the per-IP rate limit before they reach any handler.
-        // Render sits behind a load balancer, so the real client IP is in X-Forwarded-For.
+        // Reject requests that exceed the per-IP rate limit before they reach any
+        // handler.
+        // Render sits behind a load balancer, so the real client IP is in
+        // X-Forwarded-For.
         app.before(ctx -> {
             String ip = ctx.header("X-Forwarded-For");
             if (ip != null && !ip.isBlank()) {
@@ -154,7 +156,8 @@ public class Server {
         airportStore = new AirportStore(DatabaseManager.getDataSource());
 
         if (!DatabaseManager.areNewTablesPopulated()) {
-            System.out.println("WARNING: Database tables are empty. Run backend/scripts/seed_database.sh to load data.");
+            System.out
+                    .println("WARNING: Database tables are empty. Run backend/scripts/seed_database.sh to load data.");
             System.exit(1);
         }
 
@@ -165,7 +168,8 @@ public class Server {
         flightStore = new FlightStore(DatabaseManager.getDataSource(), airportStore);
         flightList = flightStore.readFlights();
 
-        // Create an index of flights by route (e.g., "JFK-LAX" -> [flight1, flight2, ...])
+        // Create an index of flights by route (e.g., "JFK-LAX" -> [flight1, flight2,
+        // ...])
         // This makes searching for flights between two airports O(1) instead of O(n)
         flightIndex = FlightGenerator.flightMapper(flightList);
 
@@ -176,12 +180,11 @@ public class Server {
         System.out.println("Loaded " + airports.length + " airports and " + flightList.size() + " flights");
     }
 
-    
-
     /**
      * GET /api/graph/connections
      * Returns all airports and all distinct (undirected) connections between them
-     * drawn from the flight graph's edge list. Used to render the full route network.
+     * drawn from the flight graph's edge list. Used to render the full route
+     * network.
      */
     private static void getGraphConnections(Context ctx) {
         // Canonical key for undirected deduplication: always put the lexically smaller
@@ -193,8 +196,8 @@ public class Server {
         for (AirportVertex vertex : flightNetwork.getVertices()) {
             for (var edge : vertex.getEdges()) {
                 String from = edge.getStart().getData().getCode();
-                String to   = edge.getEnd().getData().getCode();
-                String key  = from.compareTo(to) < 0 ? from + "-" + to : to + "-" + from;
+                String to = edge.getEnd().getData().getCode();
+                String key = from.compareTo(to) < 0 ? from + "-" + to : to + "-" + from;
 
                 if (seen.add(key)) {
                     Map<String, String> conn = new HashMap<>();
@@ -211,13 +214,14 @@ public class Server {
         List<Map<String, Object>> airports = new ArrayList<>();
         for (AirportVertex vertex : flightNetwork.getVertices()) {
             Airport a = vertex.getData();
-            if (!usedCodes.contains(a.getCode())) continue;
+            if (!usedCodes.contains(a.getCode()))
+                continue;
             Map<String, Object> entry = new HashMap<>();
-            entry.put("code",    a.getCode());
-            entry.put("city",    a.getCity());
+            entry.put("code", a.getCode());
+            entry.put("city", a.getCity());
             entry.put("country", a.getCountry());
-            entry.put("lat",     a.getLat());
-            entry.put("lon",     a.getLon());
+            entry.put("lat", a.getLat());
+            entry.put("lon", a.getLon());
             airports.add(entry);
         }
 
@@ -261,7 +265,8 @@ public class Server {
 
     /**
      * GET /api/airports/search?city=XXX
-     * Returns airports whose city matches the query (case-insensitive, partial match).
+     * Returns airports whose city matches the query (case-insensitive, partial
+     * match).
      * Returns an empty array if no airports match.
      */
     private static void searchAirportsByCity(Context ctx) {
@@ -424,7 +429,8 @@ public class Server {
             @SuppressWarnings("unchecked")
             Map<Airport, java.time.Duration> durations = Dijkstra.searchByDuration(flightNetwork, originVertex)[0];
             for (Map.Entry<Airport, java.time.Duration> entry : durations.entrySet()) {
-                // Filter out unreachable airports (Duration.ofHours(99)) and origin (Duration.ZERO)
+                // Filter out unreachable airports (Duration.ofHours(99)) and origin
+                // (Duration.ZERO)
                 if (entry.getValue() != null && entry.getValue().toMinutes() > 0
                         && entry.getValue().compareTo(java.time.Duration.ofHours(99)) < 0) {
                     Map<String, Object> route = new HashMap<>();
@@ -460,8 +466,10 @@ public class Server {
     }
 
     /**
-     * GET /api/flights/multicity?from=YYZ&destinations=JFK,LAX&departureDate=2026-04-15&daysAtEachDestination=3,4&optimizeBy=price
-     * Permutes destination order, finds valid routes on the specified dates, and returns flights per leg.
+     * GET
+     * /api/flights/multicity?from=YYZ&destinations=JFK,LAX&departureDate=2026-04-15&daysAtEachDestination=3,4&optimizeBy=price
+     * Permutes destination order, finds valid routes on the specified dates, and
+     * returns flights per leg.
      */
     private static void searchMultiCity(Context ctx) {
         String from = ctx.queryParam("from");
@@ -522,7 +530,8 @@ public class Server {
         String[] dayTokens = daysParam.split(",");
         if (dayTokens.length != destinations.length) {
             ctx.status(400).json(Map.of("error",
-                    "daysAtEachDestination must have one value per destination (" + destinations.length + " expected)"));
+                    "daysAtEachDestination must have one value per destination (" + destinations.length
+                            + " expected)"));
             return;
         }
 
@@ -553,7 +562,7 @@ public class Server {
         if (latestDate.isAfter(DB_MAX_DATE)) {
             ctx.status(400).json(Map.of("error",
                     "Trip extends beyond available data — last flight date would be " + latestDate +
-                    " but data only goes to " + DB_MAX_DATE));
+                            " but data only goes to " + DB_MAX_DATE));
             return;
         }
 
@@ -565,7 +574,8 @@ public class Server {
         ArrayList<Route> validRoutes = multiCitySearch.searchByDate(
                 from, destinations, departureDate, daysAtAirport, optimizeBy, flightStore);
 
-        // When no direct-flight routes exist, fall back to connection search via Dijkstra
+        // When no direct-flight routes exist, fall back to connection search via
+        // Dijkstra
         if (validRoutes.isEmpty()) {
             validRoutes = multiCitySearch.searchByDateWithConnections(
                     from, destinations, departureDate, daysAtAirport, optimizeBy,
@@ -589,7 +599,8 @@ public class Server {
             String[] airports = route.getAirports();
             ArrayList<ArrayList<Flight>> allFlights = route.getFlights();
 
-            // For routes with connections, legDates are stored on the route; for direct-only
+            // For routes with connections, legDates are stored on the route; for
+            // direct-only
             // routes they are computed from the intended airports and daysAtAirport.
             LocalDate[] legDates = route.getLegDates() != null
                     ? route.getLegDates()
@@ -624,7 +635,8 @@ public class Server {
 
                 int cheapestPrice = Integer.MAX_VALUE;
                 for (Flight f : legFlights) {
-                    if (f.getPrice() < cheapestPrice) cheapestPrice = f.getPrice();
+                    if (f.getPrice() < cheapestPrice)
+                        cheapestPrice = f.getPrice();
                 }
 
                 List<Map<String, Object>> flightData = new ArrayList<>();
