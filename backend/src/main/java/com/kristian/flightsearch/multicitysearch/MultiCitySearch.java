@@ -1,11 +1,6 @@
 package com.kristian.flightsearch.multicitysearch;
 
-import java.sql.Array;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.time.LocalDate;
-import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -17,10 +12,10 @@ import java.util.Set;
 
 import com.kristian.flightsearch.datagenerator.FlightGenerator;
 import com.kristian.flightsearch.db.AirportStore;
-import com.kristian.flightsearch.db.DatabaseManager;
 import com.kristian.flightsearch.db.FlightStore;
 import com.kristian.flightsearch.flightgraph.AirportVertex;
 import com.kristian.flightsearch.flightgraph.Dijkstra;
+import com.kristian.flightsearch.flightgraph.Edge;
 import com.kristian.flightsearch.flightgraph.FlightGraph;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
@@ -28,63 +23,63 @@ import com.kristian.flightsearch.models.LegQuery;
 import com.kristian.flightsearch.models.Route;
 
 /*
- * Finds valid multi-city routes and sorts them by cheapest total price.
+ * Finds valid multi-city routes and sorts them by cheapest total price or shortest duration.
  * Given a home airport and a set of destinations, it generates all possible
  * orderings and filters out any where a direct flight doesn't exist for every leg.
  *
  * Steps:
  *   1) Generate all permutations of the destination airports
- *   2) Remove permutations where any leg has no available direct flight
- *   3) For each valid permutation, collect the available flights per leg
- *   4) Sort results cheapest-first
+ *   2) Remove permutations where any leg has no available direct flight (via connectionSet)
+ *   3) For each valid permutation, collect the available flights per leg from the DB
+ *   4) Sort results by the requested criterion
  */
 public class MultiCitySearch {
 
     private final AirportStore airportStore;
+    // Keyed by "ORIGINDEST" (e.g. "JFKLHR") — used for connectivity checks and the
+    // non-date search() method. Empty when constructed from a FlightGraph.
     final HashMap<String, ArrayList<Flight>> flightIndex;
-    // Keyed by flight_number for O(1) lookup when applying date-specific prices
-    final HashMap<String, Flight> flightsByNumber;
+    // Set of "ORIGINDEST" keys for O(1) direct-flight connectivity checks.
+    private final Set<String> connectionSet;
 
-    public MultiCitySearch(AirportStore airportStore, FlightStore flightStore) {
-        this.airportStore = airportStore;
-        HashMap<String, Flight> flightList = flightStore.readFlights();
-        this.flightsByNumber = flightList;
-        this.flightIndex = FlightGenerator.flightMapper(flightList);
+    // -------------------------------------------------------------------------
+    // Constructors
+    // -------------------------------------------------------------------------
+
+    /** Test constructor: connectivity derived from the provided flight index. */
+    public MultiCitySearch(AirportStore airportStore, HashMap<String, ArrayList<Flight>> flightIndex) {
+        this.airportStore  = airportStore;
+        this.flightIndex   = flightIndex;
+        this.connectionSet = new HashSet<>(flightIndex.keySet());
     }
 
-    public MultiCitySearch(AirportStore airportStore, HashMap<String, ArrayList<Flight>> flightIndex) {
+    /** Production constructor: connectivity derived from the pre-built graph. */
+    public MultiCitySearch(AirportStore airportStore, FlightGraph flightGraph) {
         this.airportStore = airportStore;
-        this.flightIndex = flightIndex;
-        this.flightsByNumber = new HashMap<>();
-        for (ArrayList<Flight> flights : flightIndex.values()) {
-            for (Flight f : flights) {
-                flightsByNumber.put(f.getFlightNumber(), f);
+        this.flightIndex  = new HashMap<>();
+        this.connectionSet = new HashSet<>();
+        for (AirportVertex v : flightGraph.getVertices()) {
+            for (Edge e : v.getEdges()) {
+                connectionSet.add(v.getData().getCode() + e.getEnd().getData().getCode());
             }
         }
     }
 
-
+    // -------------------------------------------------------------------------
+    // Dijkstra-based static search (used by tests / legacy callers)
+    // -------------------------------------------------------------------------
 
     @SuppressWarnings("unchecked")
     public static ArrayList<Route> dijkstraFlightSearch(String homeAirport, String[] destinations, FlightGraph flightNetwork, HashMap<String, ArrayList<Flight>> flightIndex) {
-        // Step 1: Generate all permutations of the destinations bookended by home
-        // e.g. home=YYZ, destinations=[JFK, LAX] -> [[YYZ,JFK,LAX,YYZ], [YYZ,LAX,JFK,YYZ]]
         ArrayList<String[]> combinations = flightCombinations(destinations, homeAirport);
 
         ArrayList<Route> validRoutes = new ArrayList<>();
 
-        // Step 2: Try to build a valid route for each permutation
         for (String[] permutation : combinations) {
-            // expandedAirports will hold the full path including any layover airports
-            // e.g. if YYZ->JFK is only reachable via ORD: [YYZ, ORD, JFK, LAX, YYZ]
             ArrayList<String> expandedAirports = new ArrayList<>();
-
-            // one entry per sub-leg (direct segment between two consecutive airports)
             ArrayList<ArrayList<Flight>> flightsPerSubLeg = new ArrayList<>();
-
             boolean routeValid = true;
 
-            // Step 3: Process each leg of the permutation (e.g. YYZ->JFK, JFK->LAX, LAX->YYZ)
             for (int i = 0; i < permutation.length - 1; i++) {
                 String originCode = permutation[i];
                 String destCode = permutation[i + 1];
@@ -92,51 +87,38 @@ public class MultiCitySearch {
                 AirportVertex originVertex = flightNetwork.getVertex(originCode);
                 AirportVertex destVertex = flightNetwork.getVertex(destCode);
 
-                // Either airport is missing from the graph — leg can't be flown
                 if (originVertex == null || destVertex == null) {
                     routeValid = false;
                     break;
                 }
 
-                // Run Dijkstra once from this leg's origin
-                // result[0]: cheapest price from origin to every other airport
-                // result[1]: previous vertex for each airport (used to reconstruct the path)
                 Map[] dijkstraResult = Dijkstra.searchByPrice(flightNetwork, originVertex);
                 Map<Airport, Integer> prices = (Map<Airport, Integer>) dijkstraResult[0];
                 Map<Airport, AirportVertex> previous = (Map<Airport, AirportVertex>) dijkstraResult[1];
 
-                // If the destination price is MAX_VALUE, it's unreachable from this origin
                 Integer priceToDestination = prices.get(destVertex.getData());
                 if (priceToDestination == null || priceToDestination == Integer.MAX_VALUE) {
                     routeValid = false;
                     break;
                 }
 
-                // Reconstruct the path for this leg by walking backwards through the previous map
-                // e.g. dest=JFK, previous[JFK]=ORD, previous[ORD]=YYZ -> path=[YYZ, ORD, JFK]
                 ArrayList<String> legPath = new ArrayList<>();
                 Airport current = destVertex.getData();
                 while (current != null) {
-                    legPath.add(0, current.getCode()); // prepend so the path reads origin->dest
+                    legPath.add(0, current.getCode());
                     AirportVertex prevVertex = previous.get(current);
                     current = (prevVertex != null) ? prevVertex.getData() : null;
                 }
 
-                // Append this leg's path to the expanded route
-                // Skip the first airport on every leg after the first — it's already the last
-                // airport of the previous leg, so we'd duplicate it otherwise
                 int startIndex = expandedAirports.isEmpty() ? 0 : 1;
                 for (int j = startIndex; j < legPath.size(); j++) {
                     expandedAirports.add(legPath.get(j));
                 }
 
-                // Step 4: For each sub-leg in the reconstructed path (e.g. YYZ->ORD, ORD->JFK)
-                // look up the available flights from the index
                 for (int j = 0; j < legPath.size() - 1; j++) {
                     String key = legPath.get(j) + legPath.get(j + 1);
                     ArrayList<Flight> subLegFlights = flightIndex.get(key);
 
-                    // Dijkstra found a graph path but no matching flights exist in the index
                     if (subLegFlights == null || subLegFlights.isEmpty()) {
                         routeValid = false;
                         break;
@@ -149,33 +131,24 @@ public class MultiCitySearch {
 
             if (!routeValid) continue;
 
-            // Step 5: Build a Route from the fully expanded airport list and sub-leg flights
             String[] airportsArray = expandedAirports.toArray(new String[0]);
             validRoutes.add(new Route(airportsArray, flightsPerSubLeg));
         }
 
-        // Step 6: Sort by cheapest total price
         validRoutes.sort((a, b) -> Integer.compare(a.getCheapestTotalPrice(), b.getCheapestTotalPrice()));
         return validRoutes;
     }
 
-
-
+    // -------------------------------------------------------------------------
+    // Non-date search (tests only)
+    // -------------------------------------------------------------------------
 
     /**
      * Searches for all valid multi-city routes, sorted by cheapest total price.
-     *
-     * @param homeAirport  The origin/return airport code (e.g. "YYZ")
-     * @param destinations Array of destination airport codes to visit
-     * @return Sorted list of valid routes (cheapest first), empty if none found
      */
     public ArrayList<Route> search(String homeAirport, String[] destinations) {
         ArrayList<String[]> combinations = flightCombinations(destinations, homeAirport);
 
-        // TODO: Generate the flight Index with the database
-        // flightIndex = buildFlightIndexForRoute(combinations);
-
-        // remove routes where any leg has no available flight
         for (int i = combinations.size() - 1; i >= 0; i--) {
             if (!hasFlightsForAllLegs(combinations.get(i), flightIndex)) {
                 combinations.remove(i);
@@ -200,6 +173,10 @@ public class MultiCitySearch {
         validRoutes.sort((a, b) -> Integer.compare(a.getCheapestTotalPrice(), b.getCheapestTotalPrice()));
         return validRoutes;
     }
+
+    // -------------------------------------------------------------------------
+    // Date-specific search
+    // -------------------------------------------------------------------------
 
     /**
      * Searches for valid multi-city routes for specific departure dates,
@@ -227,22 +204,21 @@ public class MultiCitySearch {
             }
         }
 
-        HashMap<String, Map<String, Integer>> dateIndex =
-                flightStore.readFlightsForLegs(new ArrayList<>(uniqueLegs));
-        return buildRoutesFromDateIndex(validPerms, departureDate, daysAtAirport, dateIndex, flightsByNumber, optimizeBy);
+        HashMap<String, ArrayList<Flight>> dateIndex = flightStore.readFlightsForLegs(new ArrayList<>(uniqueLegs));
+        return buildRoutesFromDateIndex(validPerms, departureDate, daysAtAirport, dateIndex, optimizeBy);
     }
 
     /**
-     * Same as searchByDate but accepts a pre-built date-keyed price index instead of
+     * Same as searchByDate but accepts a pre-built date-keyed flight index instead of
      * querying the database. Used in tests.
      */
     ArrayList<Route> searchByDateWithIndex(String homeAirport, String[] destinations,
             LocalDate departureDate, Map<String, Integer> daysAtAirport,
-            String optimizeBy, HashMap<String, Map<String, Integer>> dateIndex) {
+            String optimizeBy, HashMap<String, ArrayList<Flight>> dateIndex) {
 
         ArrayList<String[]> validPerms = filterValidPermutations(destinations, homeAirport);
         if (validPerms.isEmpty()) return new ArrayList<>();
-        return buildRoutesFromDateIndex(validPerms, departureDate, daysAtAirport, dateIndex, flightsByNumber, optimizeBy);
+        return buildRoutesFromDateIndex(validPerms, departureDate, daysAtAirport, dateIndex, optimizeBy);
     }
 
     // -------------------------------------------------------------------------
@@ -273,20 +249,20 @@ public class MultiCitySearch {
 
         LinkedHashSet<LegQuery> uniqueLegs = collectConnectionLegQueries(
                 expandedPerms, departureDate, daysAtAirport);
-        HashMap<String, Map<String, Integer>> dateIndex =
+        HashMap<String, ArrayList<Flight>> dateIndex =
                 flightStore.readFlightsForLegs(new ArrayList<>(uniqueLegs));
         return buildConnectionRoutes(expandedPerms, departureDate, daysAtAirport, dateIndex, optimizeBy);
     }
 
     /**
      * Same as searchByDateWithConnections but accepts a pre-built date-keyed
-     * price index instead of querying the database. Used in tests.
+     * flight index instead of querying the database. Used in tests.
      */
     ArrayList<Route> searchByDateWithConnectionsAndIndex(
             String homeAirport, String[] destinations,
             LocalDate departureDate, Map<String, Integer> daysAtAirport,
             String optimizeBy,
-            HashMap<String, Map<String, Integer>> dateIndex,
+            HashMap<String, ArrayList<Flight>> dateIndex,
             FlightGraph flightGraph) {
 
         ArrayList<String[]> allPerms = flightCombinations(destinations, homeAirport);
@@ -319,7 +295,7 @@ public class MultiCitySearch {
                 String dest = perm[i + 1];
                 ArrayList<String> path;
 
-                if (flightIndex.containsKey(origin + dest)) {
+                if (connectionSet.contains(origin + dest)) {
                     path = new ArrayList<>(List.of(origin, dest));
                 } else {
                     path = findConnectingPath(origin, dest, flightGraph);
@@ -406,22 +382,14 @@ public class MultiCitySearch {
         return uniqueLegs;
     }
 
-    // Builds a list of Flight copies from the dateIndex entry for a given origin,
-    // destination, and date. Returns an empty list if no entry exists.
+    // Returns flights from the date index for a given origin, destination, and date.
     private ArrayList<FlightOnDate> flightsOnDate(String origin, String dest,
-            LocalDate date, HashMap<String, Map<String, Integer>> dateIndex) {
-        Map<String, Integer> priceMap = dateIndex.get(origin + dest + date);
+            LocalDate date, HashMap<String, ArrayList<Flight>> dateIndex) {
+        ArrayList<Flight> flights = dateIndex.get(origin + dest + date);
         ArrayList<FlightOnDate> result = new ArrayList<>();
-        if (priceMap == null) return result;
-        for (Map.Entry<String, Integer> entry : priceMap.entrySet()) {
-            Flight template = flightsByNumber.get(entry.getKey());
-            if (template == null) continue;
-            Flight copy = new Flight(template.getOrigin(), template.getDestination(),
-                    template.getDistance(), template.getDepartureTime(), template.getFlightNumber());
-            copy.setPrice(entry.getValue());
-            copy.setAirlineName(template.getAirlineName());
-            copy.setAircraftName(template.getAircraftName());
-            result.add(new FlightOnDate(copy, date));
+        if (flights == null) return result;
+        for (Flight f : flights) {
+            result.add(new FlightOnDate(f, date));
         }
         return result;
     }
@@ -494,7 +462,7 @@ public class MultiCitySearch {
     private ArrayList<Route> buildConnectionRoutes(
             List<ExpandedPerm> expandedPerms,
             LocalDate departureDate, Map<String, Integer> daysAtAirport,
-            HashMap<String, Map<String, Integer>> dateIndex, String optimizeBy) {
+            HashMap<String, ArrayList<Flight>> dateIndex, String optimizeBy) {
 
         ArrayList<Route> validRoutes = new ArrayList<>();
 
@@ -639,14 +607,21 @@ public class MultiCitySearch {
 
     private ArrayList<String[]> filterValidPermutations(String[] destinations, String homeAirport) {
         ArrayList<String[]> all = flightCombinations(destinations, homeAirport);
-        all.removeIf(perm -> !hasFlightsForAllLegs(perm, flightIndex));
+        all.removeIf(perm -> !hasConnectionsForAllLegs(perm));
         return all;
+    }
+
+    private boolean hasConnectionsForAllLegs(String[] route) {
+        for (int i = 0; i < route.length - 1; i++) {
+            if (!connectionSet.contains(route[i] + route[i + 1])) return false;
+        }
+        return true;
     }
 
     private static ArrayList<Route> buildRoutesFromDateIndex(ArrayList<String[]> perms,
             LocalDate departureDate, Map<String, Integer> daysAtAirport,
-            HashMap<String, Map<String, Integer>> dateIndex,
-            HashMap<String, Flight> flightsByNumber, String optimizeBy) {
+            HashMap<String, ArrayList<Flight>> dateIndex,
+            String optimizeBy) {
 
         ArrayList<Route> validRoutes = new ArrayList<>();
 
@@ -657,30 +632,12 @@ public class MultiCitySearch {
 
             for (int i = 0; i < perm.length - 1; i++) {
                 String key = perm[i] + perm[i + 1] + dates[i].toString();
-                Map<String, Integer> priceMap = dateIndex.get(key);
-                if (priceMap == null || priceMap.isEmpty()) {
+                ArrayList<Flight> legFlights = dateIndex.get(key);
+                if (legFlights == null || legFlights.isEmpty()) {
                     routeValid = false;
                     break;
                 }
-
-                // Build Flight objects from the in-memory index with date-specific prices
-                ArrayList<Flight> legFlights = new ArrayList<>();
-                for (Map.Entry<String, Integer> entry : priceMap.entrySet()) {
-                    Flight template = flightsByNumber.get(entry.getKey());
-                    if (template == null) continue;
-                    Flight copy = new Flight(template.getOrigin(), template.getDestination(),
-                            template.getDistance(), template.getDepartureTime(), template.getFlightNumber());
-                    copy.setPrice(entry.getValue());
-                    copy.setAirlineName(template.getAirlineName());
-                    copy.setAircraftName(template.getAircraftName());
-                    legFlights.add(copy);
-                }
-
-                if (legFlights.isEmpty()) {
-                    routeValid = false;
-                    break;
-                }
-                routeFlights.add(legFlights);
+                routeFlights.add(new ArrayList<>(legFlights));
             }
 
             if (routeValid) {
@@ -731,51 +688,8 @@ public class MultiCitySearch {
         // builds a flightIndex from the database containing only flights between the
         // airports in flightRoute
         // flightindex enables O(1) access to flights
-
-        HashSet<String> uniqueAirports = new HashSet<>(Arrays.asList(flightRoute));
-
-        // Build a lookup map limited to the airports we care about
-        HashMap<String, Airport> airportMap = new HashMap<>();
-        for (Airport a : airportStore.getAirports()) {
-            if (uniqueAirports.contains(a.getCode())) {
-                airportMap.put(a.getCode(), a);
-            }
-        }
-
-        HashMap<String, ArrayList<Flight>> flightIndex = new HashMap<>();
-        String sql = "SELECT flight_number, origin, destination, distance, scheduled_departure, price " +
-                "FROM flights WHERE origin = ANY(?) AND destination = ANY(?)";
-
-        try (Connection conn = DatabaseManager.getDataSource().getConnection();
-                PreparedStatement pstmt = conn.prepareStatement(sql)) {
-
-            Array sqlArray = conn.createArrayOf("varchar", uniqueAirports.toArray(new String[0]));
-            pstmt.setArray(1, sqlArray);
-            pstmt.setArray(2, sqlArray);
-
-            try (ResultSet rs = pstmt.executeQuery()) {
-                while (rs.next()) {
-                    String flightNumber = rs.getString("flight_number");
-                    Airport origin = airportMap.get(rs.getString("origin"));
-                    Airport destination = airportMap.get(rs.getString("destination"));
-                    double distance = rs.getDouble("distance");
-                    LocalTime departureTime = rs.getTimestamp("scheduled_departure").toLocalDateTime().toLocalTime();
-                    int price = rs.getInt("price");
-
-                    if (origin != null && destination != null) {
-                        Flight flight = new Flight(origin, destination, distance, departureTime, flightNumber);
-                        flight.setPrice(price);
-
-                        String key = origin.getCode() + destination.getCode();
-                        flightIndex.computeIfAbsent(key, k -> new ArrayList<>()).add(flight);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            System.out.println("Error building flight index from database: " + e.getMessage());
-        }
-
-        return flightIndex;
+        // NOTE: this method uses a legacy schema reference and is not used in production
+        return new HashMap<>();
     }
 
     public static boolean hasFlightsForAllLegs(String[] flightRoute, HashMap<String, ArrayList<Flight>> flightIndex) {

@@ -136,7 +136,6 @@ public class AirportStore {
                     cache.put(airport.getCode(), airport);
                 }
             }
-            System.out.println("Loaded " + cache.size() + " airports from database");
         } catch (Exception e) {
             System.out.println("Error loading airports: " + e.getMessage());
         }

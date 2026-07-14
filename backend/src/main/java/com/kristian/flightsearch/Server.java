@@ -14,8 +14,8 @@ package com.kristian.flightsearch;
  *   GET /api/routes/cheapest?from=X    - Uses Dijkstra to find cheapest routes from X
  *
  * How it works:
- *   1. On startup, loads all airport and flight data into memory (same as Main.java did)
- *   2. Builds a FlightGraph with airports as vertices and flights as edges
+ *   1. On startup, loads airport data and a lightweight connection map into memory
+ *   2. Builds a FlightGraph from the connection map (edges weighted by distance)
  *   3. Listens for HTTP requests and responds with JSON data
  */
 
@@ -29,7 +29,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import com.kristian.flightsearch.datagenerator.FlightGenerator;
 import com.kristian.flightsearch.db.AirportStore;
 import com.kristian.flightsearch.db.DatabaseManager;
 import com.kristian.flightsearch.db.FlightStore;
@@ -48,19 +47,16 @@ public class Server {
 
     // Static variables hold the data - initialized once at startup, reused for all
     // requests
-    // This is efficient because we don't reload data for every request
-    private static FlightGraph flightNetwork; // Graph structure: airports connected by flights
+    private static FlightGraph flightNetwork; // Graph structure: airports connected by direct-flight edges
     private static AirportStore airportStore; // Provides airport lookup by code
     private static FlightStore flightStore;   // Handles database queries for date-specific flights
-    private static HashMap<String, Flight> flightList; // All flights indexed by flight number
-    private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFK-LAX")
 
     private static final RateLimiter MULTICITY_LIMITER = new RateLimiter(2, 60_000);
     private static final RateLimiter DEFAULT_LIMITER   = new RateLimiter(3, 60_000);
 
-    // The DB contains flights for April–May 2026 only
-    private static final LocalDate DB_MIN_DATE = LocalDate.of(2026, 4, 1);
-    private static final LocalDate DB_MAX_DATE = LocalDate.of(2026, 5, 31);
+    // The DB contains flights for June–July 2026 only
+    private static final LocalDate DB_MIN_DATE = LocalDate.of(2026, 6, 1);
+    private static final LocalDate DB_MAX_DATE = LocalDate.of(2026, 7, 30);
 
     public static void main(String[] args) {
         // Step 1: Load all flight data before starting the server
@@ -142,13 +138,10 @@ public class Server {
     }
 
     /**
-     * Loads all flight data into memory - runs once at startup
-     *
-     * This is the same logic as Main.java's main() method, but without the menu.
-     * We load everything into static variables so it's available for all requests.
+     * Loads airport data and builds a connectivity graph - runs once at startup.
+     * Flight objects are not loaded into memory; they are fetched from the DB per request.
      */
     private static void initializeFlightData() {
-        // Connect to database and run migrations
         DatabaseManager.initialize();
 
         airportStore = new AirportStore(DatabaseManager.getDataSource());
@@ -159,21 +152,19 @@ public class Server {
         }
 
         Airport[] airports = airportStore.getAirports();
-
         flightNetwork = FlightGraph.initalizeFlightGraph(airports);
 
         flightStore = new FlightStore(DatabaseManager.getDataSource(), airportStore);
-        flightList = flightStore.readFlights();
 
-        // Create an index of flights by route (e.g., "JFK-LAX" -> [flight1, flight2, ...])
-        // This makes searching for flights between two airports O(1) instead of O(n)
-        flightIndex = FlightGenerator.flightMapper(flightList);
+        // Build connectivity graph from distinct (origin, destination) pairs.
+        // Edges are weighted by distance (km) rather than price, so Dijkstra
+        // finds shortest-distance routes as a proxy for cheapest.
+        List<String[]> connections = flightStore.getConnectionMap();
+        FlightGraph.addConnectionEdges(flightNetwork, connections);
 
-        // Add flights as edges in the graph
-        // Each flight becomes an edge connecting two airport vertices
-        FlightGraph.addFlightEdges(flightNetwork, flightIndex);
-
-        System.out.println("Loaded " + airports.length + " airports and " + flightList.size() + " flights");
+        Runtime rt = Runtime.getRuntime();
+        long heapUsedMB = (rt.totalMemory() - rt.freeMemory()) / 1024 / 1024;
+        System.out.println("Loaded " + airports.length + " airports and " + connections.size() + " connections — heap: " + heapUsedMB + "MB used / " + rt.maxMemory() / 1024 / 1024 + "MB max");
     }
 
     
@@ -335,10 +326,7 @@ public class Server {
             return;
         }
 
-        // Look up flights using our index (O(1) lookup)
-        // The key format is "ORIGIN-DESTINATION" (e.g., "JFK-LAX")
-        String routeKey = from + "-" + to;
-        ArrayList<Flight> flights = flightIndex.get(routeKey);
+        ArrayList<Flight> flights = flightStore.getFlightsForRoute(from, to, DB_MIN_DATE);
 
         // Handle case where no direct flights exist
         if (flights == null || flights.isEmpty()) {
@@ -561,7 +549,7 @@ public class Server {
             optimizeBy = "price";
         }
 
-        MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, flightIndex);
+        MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, flightNetwork);
         ArrayList<Route> validRoutes = multiCitySearch.searchByDate(
                 from, destinations, departureDate, daysAtAirport, optimizeBy, flightStore);
 
