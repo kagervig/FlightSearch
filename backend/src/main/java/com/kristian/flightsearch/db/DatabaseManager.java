@@ -67,7 +67,7 @@ public class DatabaseManager {
                     int colon = userInfo.indexOf(':');
                     String dbUser = userInfo.substring(0, colon);
                     String dbPass = userInfo.substring(colon + 1);
-                    config.setJdbcUrl("jdbc:postgresql://" + dbHost + ":" + dbPort + "/" + dbName);
+                    config.setJdbcUrl("jdbc:postgresql://" + dbHost + ":" + dbPort + "/" + dbName + "?sslmode=require");
                     config.setUsername(dbUser);
                     config.setPassword(dbPass);
                 } catch (Exception e) {
