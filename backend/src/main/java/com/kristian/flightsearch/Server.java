@@ -55,7 +55,8 @@ public class Server {
     private static HashMap<String, Flight> flightList; // All flights indexed by flight number
     private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFK-LAX")
 
-    private static final RateLimiter MULTICITY_LIMITER = new RateLimiter(2, 60_000);
+    private static final RateLimiter MULTICITY_LIMITER = new RateLimiter(1, 10_000);
+    private static final RateLimiter AIRPORT_SEARCH_LIMITER = new RateLimiter(1, 1_000);
     private static final RateLimiter DEFAULT_LIMITER = new RateLimiter(3, 60_000);
 
     // The DB contains flights for April–May 2026 only
@@ -91,8 +92,14 @@ public class Server {
                 ip = ctx.ip();
             }
 
-            boolean isMultiCity = ctx.path().equals("/api/flights/multicity");
-            RateLimiter limiter = isMultiCity ? MULTICITY_LIMITER : DEFAULT_LIMITER;
+            RateLimiter limiter;
+            if (ctx.path().equals("/api/flights/multicity")) {
+                limiter = MULTICITY_LIMITER;
+            } else if (ctx.path().equals("/api/airports/search")) {
+                limiter = AIRPORT_SEARCH_LIMITER;
+            } else {
+                limiter = DEFAULT_LIMITER;
+            }
 
             if (!limiter.isAllowed(ip)) {
                 ctx.status(429).json(Map.of("error", "Too many requests — please wait a moment and try again"));
