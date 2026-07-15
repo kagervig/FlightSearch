@@ -1,6 +1,5 @@
 package com.kristian.flightsearch.models;
 
-import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -15,7 +14,6 @@ public class Route {
     private long shortestTotalDurationMinutes;
 
     // Connection metadata — null for direct-only routes
-    private LocalDate[] legDates;
     private String[] intendedAirports;
     private boolean[] isConnectionLeg;
     private int[] minConnectionMinutes;
@@ -46,15 +44,10 @@ public class Route {
     }
 
     public Route(String[] airports, ArrayList<ArrayList<Flight>> flights,
-                 LocalDate[] legDates, String[] intendedAirports,
-                 boolean[] isConnectionLeg, int[] minConnectionMinutes,
-                 boolean[] isOvernightConnectionLeg) {
+                 String[] intendedAirports, boolean[] isConnectionLeg) {
         this(airports, flights);
-        this.legDates = legDates;
         this.intendedAirports = intendedAirports;
         this.isConnectionLeg = isConnectionLeg;
-        this.minConnectionMinutes = minConnectionMinutes;
-        this.isOvernightConnectionLeg = isOvernightConnectionLeg;
     }
 
     public void printRoutes(Route r){
@@ -132,10 +125,6 @@ public class Route {
     }
     public long getShortestTotalDurationMinutes(){
         return this.shortestTotalDurationMinutes;
-    }
-
-    public LocalDate[] getLegDates() {
-        return this.legDates;
     }
 
     // Returns the intended airports (without connection airports). Falls back to the
