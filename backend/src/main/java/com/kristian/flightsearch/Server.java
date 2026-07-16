@@ -51,17 +51,11 @@ public class Server {
     // This is efficient because we don't reload data for every request
     private static FlightGraph flightNetwork; // Graph structure: airports connected by flights
     private static AirportStore airportStore; // Provides airport lookup by code
-    private static FlightStore flightStore; // Handles database queries for date-specific flights
-    private static HashMap<String, Flight> flightList; // All flights indexed by flight number
-    private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFK-LAX")
+    private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFKLAX")
 
     private static final RateLimiter MULTICITY_LIMITER = new RateLimiter(1, 10_000);
     private static final RateLimiter AIRPORT_SEARCH_LIMITER = new RateLimiter(1, 1_000);
     private static final RateLimiter DEFAULT_LIMITER = new RateLimiter(3, 60_000);
-
-    // The DB contains flights for April–May 2026 only
-    private static final LocalDate DB_MIN_DATE = LocalDate.of(2026, 7, 1);
-    private static final LocalDate DB_MAX_DATE = LocalDate.of(2026, 8, 31);
 
     public static void main(String[] args) {
         // Step 1: Load all flight data before starting the server
@@ -172,16 +166,11 @@ public class Server {
 
         flightNetwork = FlightGraph.initalizeFlightGraph(airports);
 
-        flightStore = new FlightStore(DatabaseManager.getDataSource(), airportStore);
-        flightList = flightStore.readFlights();
+        FlightStore flightStore = new FlightStore(DatabaseManager.getDataSource(), airportStore);
+        HashMap<String, Flight> flightList = flightStore.readFlights();
 
-        // Create an index of flights by route (e.g., "JFK-LAX" -> [flight1, flight2,
-        // ...])
-        // This makes searching for flights between two airports O(1) instead of O(n)
         flightIndex = FlightGenerator.flightMapper(flightList);
 
-        // Add flights as edges in the graph
-        // Each flight becomes an edge connecting two airport vertices
         FlightGraph.addFlightEdges(flightNetwork, flightIndex);
 
         System.out.println("Loaded " + airports.length + " airports and " + flightList.size() + " flights");
