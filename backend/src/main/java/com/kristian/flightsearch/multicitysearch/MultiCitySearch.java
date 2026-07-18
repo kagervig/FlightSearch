@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import com.kristian.flightsearch.datagenerator.FlightGenerator;
 import com.kristian.flightsearch.db.AirportStore;
 import com.kristian.flightsearch.db.DatabaseManager;
 import com.kristian.flightsearch.flightgraph.AirportVertex;
@@ -151,47 +150,10 @@ public class MultiCitySearch {
      * @param destinations Array of destination airport codes to visit
      * @return Sorted list of valid routes (cheapest first), empty if none found
      */
-    public ArrayList<Route> search(String homeAirport, String[] destinations) {
-        ArrayList<String[]> combinations = flightCombinations(destinations, homeAirport);
-
-        // TODO: Generate the flight Index with the database
-        // flightIndex = buildFlightIndexForRoute(combinations);
-
-        // remove routes where any leg has no available flight
-        for (int i = combinations.size() - 1; i >= 0; i--) {
-            if (!hasFlightsForAllLegs(combinations.get(i), flightIndex)) {
-                combinations.remove(i);
-            }
-        }
-
-        ArrayList<Route> validRoutes = new ArrayList<>();
-        for (int i = 0; i < combinations.size(); i++) {
-            String[] route = combinations.get(i);
-            ArrayList<ArrayList<Flight>> routeFlights = new ArrayList<>();
-            for (int j = 0; j < route.length - 1; j++) {
-                ArrayList<Flight> legFlights = FlightGenerator.flightRouteSearch(flightIndex, route[j], route[j + 1]);
-                if (legFlights != null) {
-                    routeFlights.add(legFlights);
-                } else {
-                    routeFlights.add(new ArrayList<>());
-                }
-            }
-            validRoutes.add(new Route(route, routeFlights));
-        }
-
-        validRoutes.sort((a, b) -> Integer.compare(a.getCheapestTotalPrice(), b.getCheapestTotalPrice()));
-        return validRoutes;
-    }
-
     /**
-     * Searches for valid multi-city routes sorted by the given optimizeBy criterion.
-     * Dates are computed by the caller for display only and are not used for flight lookup.
-     *
-     * @param homeAirport  The origin/return airport code
-     * @param destinations Destination airport codes to visit
-     * @param optimizeBy   "price" or "duration"
+     * @param optimizeBy "price" or "duration"
      */
-    public ArrayList<Route> searchByDate(String homeAirport, String[] destinations, String optimizeBy) {
+    public ArrayList<Route> search(String homeAirport, String[] destinations, String optimizeBy) {
         ArrayList<String[]> validPerms = filterValidPermutations(destinations, homeAirport);
         if (validPerms.isEmpty()) return new ArrayList<>();
 

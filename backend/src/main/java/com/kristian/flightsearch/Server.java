@@ -552,7 +552,7 @@ public class Server {
         }
 
         MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, flightIndex);
-        ArrayList<Route> validRoutes = multiCitySearch.searchByDate(from, destinations, optimizeBy);
+        ArrayList<Route> validRoutes = multiCitySearch.search(from, destinations, optimizeBy);
 
         // When no direct-flight routes exist, fall back to connection search via Dijkstra
         if (validRoutes.isEmpty()) {
