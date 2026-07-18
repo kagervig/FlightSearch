@@ -558,35 +558,17 @@ public class Server {
             daysAtAirport.put(destinations[i], days);
         }
 
-        if (departureDate.isBefore(DB_MIN_DATE) || departureDate.isAfter(DB_MAX_DATE)) {
-            ctx.status(400).json(Map.of("error",
-                    "Departure date must be between " + DB_MIN_DATE + " and " + DB_MAX_DATE));
-            return;
-        }
-
-        int totalDays = daysAtAirport.values().stream().mapToInt(Integer::intValue).sum() + destinations.length;
-        LocalDate latestDate = departureDate.plusDays(totalDays);
-        if (latestDate.isAfter(DB_MAX_DATE)) {
-            ctx.status(400).json(Map.of("error",
-                    "Trip extends beyond available data — last flight date would be " + latestDate +
-                            " but data only goes to " + DB_MAX_DATE));
-            return;
-        }
-
         if (optimizeBy == null || (!optimizeBy.equalsIgnoreCase("price") && !optimizeBy.equalsIgnoreCase("duration"))) {
             optimizeBy = "price";
         }
 
         MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, flightIndex);
-        ArrayList<Route> validRoutes = multiCitySearch.searchByDate(
-                from, destinations, departureDate, daysAtAirport, optimizeBy, flightStore);
+        ArrayList<Route> validRoutes = multiCitySearch.searchByDate(from, destinations, optimizeBy);
 
-        // When no direct-flight routes exist, fall back to connection search via
-        // Dijkstra
+        // When no direct-flight routes exist, fall back to connection search via Dijkstra
         if (validRoutes.isEmpty()) {
             validRoutes = multiCitySearch.searchByDateWithConnections(
-                    from, destinations, departureDate, daysAtAirport, optimizeBy,
-                    flightStore, flightNetwork);
+                    from, destinations, optimizeBy, flightNetwork);
         }
 
         if (validRoutes.isEmpty()) {
@@ -606,13 +588,8 @@ public class Server {
             String[] airports = route.getAirports();
             ArrayList<ArrayList<Flight>> allFlights = route.getFlights();
 
-            // For routes with connections, legDates are stored on the route; for
-            // direct-only
-            // routes they are computed from the intended airports and daysAtAirport.
-            LocalDate[] legDates = route.getLegDates() != null
-                    ? route.getLegDates()
-                    : MultiCitySearch.computeLegDates(
-                            route.getIntendedAirports(), departureDate, daysAtAirport);
+            LocalDate[] legDates = MultiCitySearch.computeLegDates(
+                    route.getIntendedAirports(), departureDate, daysAtAirport);
 
             for (int i = 0; i < allFlights.size(); i++) {
                 Map<String, Object> leg = new HashMap<>();
