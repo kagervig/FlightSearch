@@ -1,0 +1,435 @@
+# CityHopper — Technical Design
+
+## Document Control / Version History
+
+| Version | Author | Date | Description |
+| --- | --- | --- | --- |
+| 1.0 | Initial Author | 2026-05-08 | Initial technical design and ERD. |
+
+---
+
+## Problem
+
+When researching travel, it can be hard to figure out the best flights to take in order to see everything you want to. The tool aims to solve that by offering the user the ability to search flights between up to 5 destination airports across a time window to find either the cheapest combination of flights, or the shortest total flight time.
+
+For example, a user searches for flights from their home airport in Toronto to visit Rome, London, Budapest, Helsinki, and Dublin.
+
+One potential route is `YYZ→DUB→HEL→BUD→FCO→LHR→YYZ`
+
+This is a traveling salesman problem. With a home airport and 5 target airports, there are 120 (5!) unique combinations of flights to search.
+
+If we consider connecting flights to get between target airports, that number increases even more.
+
+One potential route with connections is `YYZ→DUB→BER→HEL→BUD→FCO→LHR→YYZ`
+
+Furthermore, if we consider that we're searching flights over a window of time, the total number of flight combinations to consider increases even more.
+
+---
+
+## Glossary
+
+| Term | Definition |
+| --- | --- |
+| **Leg** | A single flight segment between two airports (e.g., YYZ to DUB). |
+| **Route** | A complete sequence of legs starting and ending at the home airport. |
+| **Permutation** | One possible ordering of the destination airports. |
+| **Home Airport** | The origin and final destination for the multi-city trip. |
+| **IATA Code** | A three-letter code designating many airports around the world (e.g., JFK, LHR). |
+
+---
+
+## Key Requirements
+
+- Ask user for home airport and up to 5 target destinations
+- Departure date (from home airport)
+- Desired number of days in each target destination
+- Sort by:
+  - Lowest cost
+  - Shortest overall travel time
+- Search returns the 5 cheapest/shortest routes for the user to browse
+- Support connecting flights between target destinations
+
+---
+
+## Constraints & Assumptions
+
+- **Constraints:**
+  - Maximum of 5 destination airports per search.
+  - Flights are limited to the pre-loaded 2026 dataset.
+- **Assumptions:**
+  - All prices are in a single currency (e.g., USD).
+  - All timestamps and durations are handled in UTC.
+  - User stays an exact number of days in each city as specified.
+
+---
+
+## Technology Stack
+
+- **Backend:** Java 21, Javalin (Web Framework), HikariCP (Connection Pooling), PostgreSQL.
+- **Frontend:** Next.js 15, TypeScript, Tailwind CSS, Lucide React.
+- **Data:** In-memory weighted directed graph for route optimization.
+
+---
+
+## Technical Details
+
+### Architecture
+
+![Architecture Diagram](Architecture Diagram)
+
+To make a request, the user must provide an origin airport, up to 5 destination airports, a departure date, how many days they want to stay in each city, and select whether they want to optimise for lowest overall cost or shortest overall travel time.
+
+At startup, the backend loads the entire airport network into memory as a weighted directed graph (`FlightGraph`) and a route-keyed index (`flightIndex`). The graph uses average prices and durations as weights to find potential connecting paths between airports that lack direct flights.
+
+When a search request arrives, the backend:
+1.  Generates all permutations of the destination airports.
+2.  Queries the database for date-specific flight availability and pricing for all relevant legs (including potential connecting legs identified via the graph).
+3.  Filters and sorts the resulting routes based on the user's optimization criteria.
+
+While the graph structure is static, the system performs targeted database queries at request time to ensure pricing and availability are accurate for the specific travel dates.
+
+---
+
+### Data Models (Detailed Data Dictionary)
+
+These are the four persisted entities. `Route` is a runtime construct assembled from query results — it has no corresponding table.
+
+#### planes
+
+| Column | Type | Constraints | Description |
+| --- | --- | --- | --- |
+| `iata_code` | `VARCHAR(4)` | PRIMARY KEY | Unique aircraft type identifier (e.g., B738). |
+| `name` | `TEXT` | NOT NULL | Full name of the aircraft model. |
+
+#### airports
+
+| Column | Type | Constraints | Description |
+| --- | --- | --- | --- |
+| `airport_id` | `INTEGER` | PRIMARY KEY | Internal unique identifier. |
+| `iata_code` | `CHAR(3)` | UNIQUE | Three-letter IATA airport code. |
+| `icao_code` | `CHAR(4)` | | Four-letter ICAO airport code. |
+| `name` | `TEXT` | NOT NULL | Full name of the airport. |
+| `city` | `TEXT` | | City where the airport is located. |
+| `country` | `TEXT` | | Country where the airport is located. |
+| `latitude` | `NUMERIC(9,6)` | | Decimal latitude coordinate. |
+| `longitude` | `NUMERIC(9,6)` | | Decimal longitude coordinate. |
+| `utc_offset` | `NUMERIC(4,1)` | | Offset from UTC in hours. |
+| `dst` | `CHAR(1)` | | Daylight Savings Time flag. |
+| `timezone` | `TEXT` | | Timezone name (e.g., Europe/London). |
+| `elevation_ft` | `INTEGER` | | Airport elevation in feet. |
+| `max_runway_length_ft` | `INTEGER` | | Length of the longest runway in feet. |
+
+#### airlines
+
+| Column | Type | Constraints | Description |
+| --- | --- | --- | --- |
+| `airline_code` | `VARCHAR(3)` | PRIMARY KEY | Unique IATA/ICAO airline code. |
+| `airline_name` | `TEXT` | NOT NULL | Full name of the airline. |
+| `country` | `TEXT` | | Country of origin for the airline. |
+
+#### flights
+
+| Column | Type | Constraints | Description |
+| --- | --- | --- | --- |
+| `flight_id` | `BIGSERIAL` | PRIMARY KEY | Unique flight instance identifier. |
+| `flight_date` | `DATE` | NOT NULL | Scheduled date of the flight. |
+| `airline_code` | `VARCHAR(3)` | NOT NULL, FK → `airlines.airline_code` | Carrier operating the flight. |
+| `origin` | `CHAR(3)` | NOT NULL, FK → `airports.iata_code` | Departure airport code. |
+| `destination` | `CHAR(3)` | NOT NULL, FK → `airports.iata_code` | Arrival airport code. |
+| `stops` | `SMALLINT` | NOT NULL, DEFAULT 0, CHECK 0–10 | Number of intermediate stops. |
+| `aircraft_type` | `VARCHAR(4)` | FK → `planes.iata_code` | Type of aircraft used. |
+| `flight_number` | `VARCHAR(8)` | NOT NULL | Flight designator (e.g., AC123). |
+| `departure_time` | `TIME` | NOT NULL | Local departure time. |
+| `ticket_price` | `NUMERIC(8,2)` | NOT NULL, CHECK > 0 | Price for a single economy ticket. |
+
+---
+
+### Indexing & Optimization Strategy
+
+- **B-Tree Indexes:** Applied to `iata_code` and `airline_code` for fast primary key lookups.
+- **Composite Indexes:**
+  - `airports(country, iata_code, city)`: Optimized for geographical searches and filtering.
+  - `flights(flight_date, origin, destination)`: Critical for date-specific leg availability queries.
+- **In-Memory Caching:** `AirportStore` and `FlightGraph` reduce repeated DB hits for static topology data.
+
+---
+
+### API Endpoints
+
+#### `GET /airports/search`
+
+Returns a list of airports matching a search query (used for autocomplete).
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `q` | `string` | Yes | Partial airport name or IATA code |
+
+#### `POST /search`
+
+Returns the top 5 routes sorted by the chosen optimisation criteria.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `from` | `string` | Yes | Home airport IATA code |
+| `destinations` | `string[]` | Yes | Up to 5 destination IATA codes |
+| `date` | `string` | Yes | Departure date (`YYYY-MM-DD`) |
+| `optimizeBy` | `"price"` \| `"time"` | Yes | Sort criteria |
+
+---
+
+### Server Initialisation Flow
+
+```
+DatabaseManager.initialize()
+  Connects to the database via HikariCP and runs any pending migrations
+  (currently 001–004).
+
+new AirportStore(dataSource)
+  Creates the airport store — no data loaded yet, just wires up the data source.
+
+DatabaseManager.areNewTablesPopulated()
+  Queries SELECT COUNT(*) FROM airports. Exits with an error if the table is empty.
+
+airportStore.getAirports()
+  Loads all airports from the DB into memory as a HashMap<code, Airport> — one
+  object per airport. Returns them as an array.
+
+FlightGraph.initializeFlightGraph(airports)
+  Creates an empty weighted directed graph, then adds one vertex per airport.
+
+FlightStore.readFlights()
+  Queries all direct flights from the DB. For each flight, looks up the origin
+  and destination Airport objects from AirportStore (no duplicates), calculates
+  distance, and constructs a Flight. Returns HashMap<flightNumber, Flight>.
+
+FlightGenerator.flightMapper(flightList)
+  Re-indexes the flights by route key (e.g. "JFKLAX" → [flight1, flight2, ...]).
+  This enables O(1) lookup when searching for flights between two airports.
+
+FlightGraph.addFlightEdges(flightNetwork, flightIndex)
+  Iterates through all flights and adds each one as a directed edge in the graph,
+  connecting the origin vertex to the destination vertex with price and duration
+  as weights.
+
+Javalin starts, endpoints registered, server listens for requests.
+```
+
+---
+
+### Data Flow — Multi-City Search
+
+```
+Server.searchMultiCity(ctx)
+  Validates the from and destinations params, then calls MultiCitySearch.search().
+
+MultiCitySearch.search(homeAirport, destinations, optimizeBy)
+  Orchestrates the whole thing. Calls the three functions below in sequence.
+
+flightCombinations(destinations, homeAirport)
+  Generates every possible ordering of the destination airports, with home airport
+  bookending each one (e.g. YYZ→JFK→LAX→YYZ, YYZ→LAX→JFK→YYZ). Uses
+  permuteRoutes() recursively to build all permutations.
+
+hasFlightsForAllLegs(route, flightIndex)
+  For each permutation, checks that every leg has at least one flight in the
+  index. Removes the permutation if any leg is missing.
+
+FlightGenerator.flightRouteSearch(flightIndex, origin, destination)
+  For each remaining valid route, called once per leg — does a simple key lookup
+  ("JFKLAX") in the flight index and returns all flights for that leg.
+
+new Route(airports, routeFlights)
+  Constructs a Route object. In the constructor, immediately calculates:
+  - cheapestTotalPrice: sum of the cheapest flight on each leg.
+  - shortestTotalDuration: sum of the shortest duration flight on each leg.
+
+Back in search()
+  Sorts the valid routes by the requested criteria (cheapestTotalPrice or
+  shortestTotalDuration) and returns the top 5.
+
+Back in Server.searchMultiCity()
+  Serialises the routes to JSON and sends the response.
+```
+
+---
+
+### Performance & Complexity Analysis
+
+- **Permutation Logic:** The system solves a variation of the Traveling Salesman Problem (TSP). With $n$ destinations, there are $n!$ possible permutations. For the maximum of 5 destinations, the system evaluates $5! = 120$ routes.
+- **Search Complexity:** By loading the entire flight network into an in-memory `HashMap` (`flightIndex`), leg lookups are $O(1)$. This allows the system to evaluate all 120 permutations and their corresponding flight options in sub-second time.
+- **Space Complexity:** The in-memory graph scales linearly with the number of flights and airports in the database.
+
+---
+
+### Memory Usage & Production Optimization
+
+**Production Finding:** During deployment on Render, the system exhibited significant memory overhead, with the Java process consuming ~2 GB of RAM. Investigation revealed that the `FlightGraph` and associated data structures were unnecessarily wasteful, holding thousands of vertices and edges for airports with no scheduled service.
+
+#### Memory Breakdown (Production Snapshot)
+
+| Source | Estimated size | Notes |
+| --- | --- | --- |
+| JVM internals (Jetty, JIT, Metaspace) | ~1.5–1.8 GB | Default sizing is too aggressive for this workload. |
+| `Flight` objects (~48K) | ~22 MB | Primary data allocation. |
+| `HashMap`/`ArrayList` overhead | ~8 MB | Redundant indexing in `flightList`. |
+| `Edge` objects in `FlightGraph` (~48K) | ~3–5 MB | Static edges held in memory. |
+| `AirportVertex` objects | <1 MB | Includes 1,700+ vertices, many unused. |
+
+#### Optimization Strategy (Priority: High)
+
+To resolve the "wasteful" nature of the graph and reduce the RAM footprint, the following optimizations are being implemented:
+
+**1. JVM Footprint Reduction (Low Effort)**
+- **Constraint:** Limit heap and metaspace to prevent the JVM from claiming unused system RAM.
+- **Action:** Apply `-Xmx512m -Xms128m -XX:MaxMetaspaceSize=128m` and tune Jetty thread pools (min 8 / max 32).
+
+**2. Lean Data Loading (Medium Effort)**
+- **Problem:** `AirportStore` loads 1,788 airports, but only ~300 have active flights.
+- **Action:** Filter the `airports` query to only include codes present in the `flights` table (Origin or Destination). This reduces vertex overhead and improves autocomplete relevance.
+
+**3. Redundancy Cleanup (Low Effort)**
+- **Action:** Explicitly set `flightList` to `null` immediately after the `flightIndex` is built during startup. This frees ~27 MB of redundant heap memory.
+
+**4. On-Demand Graph Construction (High Effort)**
+- **Goal:** Eliminate the static in-memory graph.
+- **Action:** Instead of a global `FlightGraph`, build a localized subgraph at request time based on the specific `from` and `destinations` in the search query. This shifts the memory cost from static/permanent to transient/per-request.
+
+---
+
+### Error Handling & Edge Cases
+
+- **Broken Routes:** If a specific leg (e.g., `HEL→BUD`) has no scheduled flights in the `flightIndex`, that entire permutation is discarded.
+- **Invalid Inputs:** Home or destination airports that do not exist in the `AirportStore` result in a 400 Bad Request.
+- **Limit Enforcement:** The UI and API strictly enforce the 5-destination limit to prevent exponential growth in permutation processing.
+
+---
+
+## Testing Strategy
+
+- **Unit Testing:** JUnit 5 is used to verify core logic, including `Dijkstra` pathfinding, `Flight` duration calculations, and `MultiCitySearch` permutation generation.
+- **Integration Testing:** Tests verify that `AirportStore` and `FlightStore` correctly interface with the PostgreSQL database and map rows to domain objects.
+- **Validation:** Automated tests ensure that the "cheapest" and "shortest" optimization logic correctly sorts the final `Route` list.
+
+---
+
+## Deployment & Infrastructure
+
+- **Containerization:** The backend is packaged via Docker for consistent deployment environments.
+- **Hosting:** Primary deployment is on **Railway** (migrated from Render for superior resource allocation and free tier benefits). It also supports Heroku via `Procfile`.
+- **Database:** Requires a PostgreSQL instance with the schema defined in `src/main/resources/db/`.
+
+---
+
+## Security Architecture
+
+CityHopper employs a multi-layered security approach to protect user data and ensure system integrity.
+
+### 1. Authentication & Authorization
+- **Stateless Authentication:** The system uses JSON Web Tokens (JWT) for secure, stateless session management.
+- **Identity Provider:** [Planned: Integration with NextAuth.js or Supabase Auth for OAuth2/OIDC support].
+- **Password Hashing:** Any stored credentials must be hashed using **Argon2id** or **BCrypt** with a high work factor.
+- **Role-Based Access Control (RBAC):**
+  - `USER`: Standard search and itinerary saving capabilities.
+  - `ADMIN`: Access to administrative endpoints for data management (e.g., updating flight schedules).
+
+### 2. Data Protection
+- **In Transit:** Mandatory **TLS 1.3** for all communications between the frontend, backend, and database.
+- **At Rest:**
+  - Sensitive database columns (if any user PII is added) are encrypted using **AES-256-GCM**.
+  - Database backups are encrypted and stored in a separate, secure bucket.
+- **Secrets Management:** Environment variables are used for all sensitive keys (DB credentials, JWT secrets). Hard-coding of secrets is strictly prohibited.
+
+### 3. API & Network Security
+- **Rate Limiting:** Implemented via **Bucket4j** (backend) or a middleware layer to prevent brute-force attacks and API abuse.
+- **CORS Policy:** Strictly enforced to allow requests only from the production frontend domain.
+- **Input Validation:**
+  - Backend: Strict schema validation using **Javalin/Jackson**.
+  - Frontend: Type-safe form handling with **Zod**.
+- **Security Headers:** Mandatory inclusion of `Content-Security-Policy`, `X-Content-Type-Options`, `Strict-Transport-Security`, and `X-Frame-Options`.
+
+### 4. Vulnerability Management
+- **SCA (Software Composition Analysis):** Automated scanning of `pom.xml` and `package.json` for known vulnerabilities (CVEs) during CI/CD.
+- **SQL Injection Prevention:** Exclusive use of **Parameterized Queries** via HikariCP/JDBC; no raw string concatenation for SQL.
+
+---
+
+## Non-Functional Requirements (NFRs)
+
+- **Availability:** Target 99.9% uptime.
+- **Latency:** Search results should be returned within 1.5 seconds for a 5-city query.
+- **Scalability:** System should handle up to 50 concurrent search requests without degradation.
+
+---
+
+## Monitoring & Observability
+
+- **Logging Strategy:** Structured JSON logging via SLF4J/Logback.
+- **Health Check Endpoints:** `/health` endpoint for container orchestration.
+- **Metrics/Alerting:** Monitor heap usage, request latency, and 5xx error rates.
+
+---
+
+## Compliance & Privacy
+
+- [To be fleshed out: GDPR compliance, handling of user search history, etc.]
+
+---
+
+## Design Decisions & Trade-offs
+
+This section documents the "Why" behind the architecture, highlighting the alternatives considered and the compromises made.
+
+### 1. Hybrid Search (In-Memory Graph + On-Demand DB Queries)
+- **Decision:** Use a static in-memory graph for topology and pathfinding, but query the DB for date-specific pricing.
+- **Trade-off:**
+    - *Pros:* Extremely fast route validation and connection pathfinding.
+    - *Cons:* Requires a large memory footprint at startup and introduces DB latency during the final pricing phase.
+- **Discussion:** [Why not load all prices into memory? Why not do everything in SQL?]
+
+### 2. Brute-Force Permutations for $n \le 5$
+- **Decision:** Use simple recursion to generate all $n!$ possible paths.
+- **Trade-off:**
+    - *Pros:* Guarantees the absolute global optimum (cheapest/shortest) for the requested set.
+    - *Cons:* Computation time grows exponentially ($O(n!)$); becomes unusable beyond 7–8 destinations.
+- **Discussion:** [Why 5 was chosen as the limit. How this compares to heuristic approaches like Nearest Neighbor.]
+
+### 3. Weighted Graph with Average Values
+- **Decision:** The global `FlightGraph` uses average prices/durations for its edges.
+- **Trade-off:**
+    - *Pros:* Allows Dijkstra to find "likely" best paths for connections without knowing the specific date yet.
+    - *Cons:* Dijkstra might suggest a path that is usually cheap but happens to be expensive on the user's specific date.
+- **Discussion:** [How we reconcile "average" pathfinding with "exact" date-specific results.]
+
+---
+
+## Success Metrics / KPIs
+
+- **Search Latency:** Average time taken to return search results.
+- **Conversion Rate:** Percentage of users who complete a search after entering the site.
+- **Error Rate:** Percentage of requests resulting in 4xx or 5xx errors.
+
+---
+
+## Future Roadmap & Improvements
+
+### 1. Scaling Beyond the 5-Destination Limit
+- **Goal:** Support up to 10–15 destinations.
+- **Proposed Approach:** Implement meta-heuristic algorithms (e.g., **Simulated Annealing** or **Genetic Algorithms**) to find near-optimal routes without evaluating every permutation.
+
+### 2. Caching Layer (Redis)
+- **Goal:** Reduce database load and sub-second response times for repeat searches.
+- **Proposed Approach:** Cache date-specific leg results for popular routes (e.g., JFK→LHR on a specific Friday).
+
+### 3. Real-Time Data Integration
+- **Goal:** Move beyond the static 2026 dataset.
+- **Proposed Approach:** Integrate with a flight API (e.g., **Amadeus** or **SkyScanner**) to fetch live pricing and availability.
+
+### 4. Advanced User Features
+- **Goal:** Increase utility for complex travel planning.
+- **Proposed Approach:**
+    - Support for multi-passenger bookings.
+    - Filter by airline alliance (Star Alliance, Oneworld).
+    - Minimum/Maximum layover duration controls.
+    - User accounts to save and share itineraries.
+/Maximum layover duration controls.
+    - User accounts to save and share itineraries.

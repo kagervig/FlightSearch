@@ -26,7 +26,8 @@ public class DatabaseManager {
             "db/001_create_planes.sql",
             "db/002_create_airports.sql",
             "db/003_create_airlines.sql",
-            "db/004_create_flights.sql"
+            "db/004_create_flights.sql",
+            "db/005_update_flights.sql"
     };
 
     public static void initialize() {
