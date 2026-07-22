@@ -275,13 +275,8 @@ public class MultiCitySearch {
         return path;
     }
 
-    // Validates a connection point between inbound and outbound flights by time gap.
-    // Same-day: outbound must depart > MIN_CONNECTION_MINUTES after inbound arrives.
-    // Overnight: inbound lands same day but outbound departs "earlier" (next calendar
-    // day). Detected by: !arrivesNextDay && gap <= 0.
-    // Invalid: inbound crosses midnight and gap <= 0 (outbound would be day N+2).
-    //
-    // Returns [validInbounds, validOutbounds] for all valid pairings, or null if none.
+    // Returns [validInbounds, validOutbounds] for all pairings where outbound departs
+    // > MIN_CONNECTION_MINUTES after inbound arrives, or null if no valid pairings exist.
     @SuppressWarnings("unchecked")
     private ArrayList<Flight>[] validateConnectionPoint(
             ArrayList<Flight> inbounds, ArrayList<Flight> outbounds) {
@@ -291,14 +286,10 @@ public class MultiCitySearch {
 
         for (Flight f1 : inbounds) {
             int arrivalMin = f1.getArrivalTime().toSecondOfDay() / 60;
-            // Arrival time before departure time means the flight crosses midnight.
-            boolean arrivesNextDay = f1.getArrivalTime().isBefore(f1.getDepartureTime());
 
             for (Flight f2 : outbounds) {
                 int gap = f2.getDepartureTime().toSecondOfDay() / 60 - arrivalMin;
-                boolean sameDayValid = gap > MIN_CONNECTION_MINUTES;
-                boolean overnightValid = !arrivesNextDay && gap <= 0;
-                if (sameDayValid || overnightValid) {
+                if (gap > MIN_CONNECTION_MINUTES) {
                     validInboundSet.add(f1);
                     validOutboundSet.add(f2);
                 }

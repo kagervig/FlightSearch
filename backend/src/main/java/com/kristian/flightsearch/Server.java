@@ -22,6 +22,7 @@ package com.kristian.flightsearch;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -53,7 +54,7 @@ public class Server {
     private static AirportStore airportStore; // Provides airport lookup by code
     private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFKLAX")
 
-    private static final RateLimiter MULTICITY_LIMITER = new RateLimiter(1, 10_000);
+    private static final RateLimiter MULTICITY_LIMITER = new RateLimiter(1, 2_000);
     private static final RateLimiter AIRPORT_SEARCH_LIMITER = new RateLimiter(1, 1_000);
     private static final RateLimiter DEFAULT_LIMITER = new RateLimiter(3, 60_000);
 
@@ -551,13 +552,17 @@ public class Server {
             optimizeBy = "price";
         }
 
+        System.out.println("[multicity] from=" + from + " destinations=" + Arrays.toString(destinations) + " optimizeBy=" + optimizeBy);
+
         MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, flightIndex);
         ArrayList<Route> validRoutes = multiCitySearch.search(from, destinations, optimizeBy);
+        System.out.println("[multicity] direct search: " + validRoutes.size() + " routes");
 
         // When no direct-flight routes exist, fall back to connection search via Dijkstra
         if (validRoutes.isEmpty()) {
             validRoutes = multiCitySearch.searchByDateWithConnections(
                     from, destinations, optimizeBy, flightNetwork);
+            System.out.println("[multicity] connection search: " + validRoutes.size() + " routes");
         }
 
         if (validRoutes.isEmpty()) {
@@ -600,8 +605,25 @@ public class Server {
                 leg.put("date", legDates[i].toString());
                 leg.put("isConnection", route.isConnectionLeg(i));
                 if (route.isConnectionLeg(i)) {
-                    leg.put("connectionMinutes", route.getMinConnectionMinutes(i));
-                    leg.put("isOvernightConnection", route.isOvernightConnectionLeg(i));
+                    int connectionMinutes = 0;
+                    boolean isOvernightConnection = false;
+                    if (i + 1 < allFlights.size()) {
+                        Flight cheapestInbound = allFlights.get(i).stream()
+                                .min(Comparator.comparingInt(Flight::getPrice)).orElse(null);
+                        Flight cheapestOutbound = allFlights.get(i + 1).stream()
+                                .min(Comparator.comparingInt(Flight::getPrice)).orElse(null);
+                        if (cheapestInbound != null && cheapestOutbound != null) {
+                            int arrivalMin = cheapestInbound.getArrivalTime().toSecondOfDay() / 60;
+                            int departureMin = cheapestOutbound.getDepartureTime().toSecondOfDay() / 60;
+                            connectionMinutes = departureMin - arrivalMin;
+                            if (connectionMinutes < 0) {
+                                connectionMinutes += 24 * 60;
+                                isOvernightConnection = true;
+                            }
+                        }
+                    }
+                    leg.put("connectionMinutes", connectionMinutes);
+                    leg.put("isOvernightConnection", isOvernightConnection);
                 }
 
                 ArrayList<Flight> legFlights = allFlights.get(i);

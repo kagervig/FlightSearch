@@ -308,7 +308,7 @@ export function FlightCombinationCard({
                           <span>{formatDuration(best.durationMinutes)}</span>
                           {best.airlineName && <span>{best.airlineName}</span>}
                           {best.aircraftName && <span className="text-muted/70">{best.aircraftName}</span>}
-                          {best.cheapest && (
+                          {best.cheapest && leg.flights.length > 1 && (
                             <Badge variant="default" className="text-xs">
                               Cheapest
                             </Badge>
