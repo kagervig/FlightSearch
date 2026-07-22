@@ -133,6 +133,11 @@ public class Route {
         return intendedAirports != null ? intendedAirports : airports;
     }
 
+    public void setConnectionMetadata(int[] minConnectionMinutes, boolean[] isOvernightConnectionLeg) {
+        this.minConnectionMinutes = minConnectionMinutes;
+        this.isOvernightConnectionLeg = isOvernightConnectionLeg;
+    }
+
     public boolean isConnectionLeg(int i) {
         return isConnectionLeg != null && isConnectionLeg[i];
     }

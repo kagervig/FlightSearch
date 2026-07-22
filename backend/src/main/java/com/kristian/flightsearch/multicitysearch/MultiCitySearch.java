@@ -275,33 +275,51 @@ public class MultiCitySearch {
         return path;
     }
 
-    // Returns [validInbounds, validOutbounds] for all pairings where outbound departs
-    // > MIN_CONNECTION_MINUTES after inbound arrives, or null if no valid pairings exist.
-    @SuppressWarnings("unchecked")
-    private ArrayList<Flight>[] validateConnectionPoint(
+    private record ConnectionResult(
+        ArrayList<Flight> validInbounds,
+        ArrayList<Flight> validOutbounds,
+        int minConnectionMinutes,
+        boolean hasOvernight
+    ) {}
+
+    // Validates inbound/outbound pairings at a connection point.
+    // Same-day: outbound departs > MIN_CONNECTION_MINUTES after inbound arrives.
+    // Overnight: outbound departs earlier than inbound arrives (next calendar day),
+    //            only when the inbound flight itself does not cross midnight.
+    // Returns null if no valid pairings exist.
+    private ConnectionResult validateConnectionPoint(
             ArrayList<Flight> inbounds, ArrayList<Flight> outbounds) {
 
         Set<Flight> validInboundSet = new HashSet<>();
         Set<Flight> validOutboundSet = new HashSet<>();
+        int minGap = Integer.MAX_VALUE;
+        boolean hasOvernight = false;
 
         for (Flight f1 : inbounds) {
             int arrivalMin = f1.getArrivalTime().toSecondOfDay() / 60;
-
+            boolean arrivesNextDay = f1.getArrivalTime().isBefore(f1.getDepartureTime());
             for (Flight f2 : outbounds) {
                 int gap = f2.getDepartureTime().toSecondOfDay() / 60 - arrivalMin;
                 if (gap > MIN_CONNECTION_MINUTES) {
                     validInboundSet.add(f1);
                     validOutboundSet.add(f2);
+                    minGap = Math.min(minGap, gap);
+                } else if (!arrivesNextDay && gap < 0) {
+                    validInboundSet.add(f1);
+                    validOutboundSet.add(f2);
+                    hasOvernight = true;
+                    minGap = Math.min(minGap, gap + 1440);
                 }
             }
         }
 
         if (validInboundSet.isEmpty() || validOutboundSet.isEmpty()) return null;
-
-        ArrayList<Flight>[] result = new ArrayList[2];
-        result[0] = new ArrayList<>(validInboundSet);
-        result[1] = new ArrayList<>(validOutboundSet);
-        return result;
+        return new ConnectionResult(
+            new ArrayList<>(validInboundSet),
+            new ArrayList<>(validOutboundSet),
+            minGap == Integer.MAX_VALUE ? 0 : minGap,
+            hasOvernight
+        );
     }
 
     private ArrayList<Route> buildConnectionRoutes(
@@ -316,6 +334,8 @@ public class MultiCitySearch {
 
             ArrayList<ArrayList<Flight>> subLegFlights = new ArrayList<>();
             boolean[] isConnectionLeg = new boolean[numSubLegs];
+            int[] minConnectionMinutes = new int[numSubLegs];
+            boolean[] isOvernightLeg = new boolean[numSubLegs];
             boolean routeValid = true;
             ArrayList<Flight> pendingOutbounds = null;
 
@@ -341,17 +361,20 @@ public class MultiCitySearch {
                     ArrayList<Flight> outbounds = flightIndex.getOrDefault(
                             exp[i + 1] + exp[i + 2], new ArrayList<>());
 
-                    @SuppressWarnings("unchecked")
-                    ArrayList<Flight>[] validated = validateConnectionPoint(inbounds, outbounds);
+                    ConnectionResult validated = validateConnectionPoint(inbounds, outbounds);
                     if (validated == null) { routeValid = false; break; }
 
-                    subLegFlights.add(validated[0]);
-                    pendingOutbounds = validated[1];
+                    subLegFlights.add(validated.validInbounds());
+                    pendingOutbounds = validated.validOutbounds();
+                    minConnectionMinutes[i] = validated.minConnectionMinutes();
+                    isOvernightLeg[i] = validated.hasOvernight();
                 }
             }
 
             if (routeValid) {
-                validRoutes.add(new Route(exp, subLegFlights, ep.intendedAirports(), isConnectionLeg));
+                Route route = new Route(exp, subLegFlights, ep.intendedAirports(), isConnectionLeg);
+                route.setConnectionMetadata(minConnectionMinutes, isOvernightLeg);
+                validRoutes.add(route);
             }
         }
 
