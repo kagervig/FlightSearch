@@ -577,8 +577,21 @@ public class Server {
             String[] airports = route.getAirports();
             ArrayList<ArrayList<Flight>> allFlights = route.getFlights();
 
-            LocalDate[] legDates = MultiCitySearch.computeLegDates(
-                    route.getIntendedAirports(), departureDate, daysAtAirport);
+            // Build one date per actual leg, including connection legs.
+            // Connection legs advance by 0 (same-day) or 1 (overnight); intended
+            // destination legs advance by daysAtAirport + 1.
+            LocalDate[] legDates = new LocalDate[allFlights.size()];
+            LocalDate current = departureDate;
+            for (int i = 0; i < allFlights.size(); i++) {
+                legDates[i] = current;
+                if (i < allFlights.size() - 1) {
+                    if (route.isConnectionLeg(i)) {
+                        current = current.plusDays(route.isOvernightConnectionLeg(i) ? 1 : 0);
+                    } else {
+                        current = current.plusDays(daysAtAirport.getOrDefault(airports[i + 1], 0) + 1);
+                    }
+                }
+            }
 
             for (int i = 0; i < allFlights.size(); i++) {
                 Map<String, Object> leg = new HashMap<>();
