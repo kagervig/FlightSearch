@@ -58,7 +58,7 @@ class MultiCitySearchTest {
     @DisplayName("search returns valid routes when flights exist for all legs")
     void searchReturnsRoutesWhenFlightsExist() {
         MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
-        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR", "CDG"});
+        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR", "CDG"}, "price");
         assertFalse(routes.isEmpty());
     }
 
@@ -70,19 +70,55 @@ class MultiCitySearchTest {
         // No return legs — no complete route is possible
 
         MultiCitySearch mcs = new MultiCitySearch(null, sparseIndex);
-        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR"});
+        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR"}, "price");
         assertTrue(routes.isEmpty());
     }
 
     @Test
-    @DisplayName("search returns routes sorted cheapest first")
+    @DisplayName("search returns routes sorted cheapest first when optimizeBy is price")
     void searchReturnsCheapestRouteFirst() {
         MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
-        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR", "CDG"});
+        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR", "CDG"}, "price");
         assertTrue(routes.size() > 1);
         for (int i = 0; i < routes.size() - 1; i++) {
             assertTrue(routes.get(i).getCheapestTotalPrice() <= routes.get(i + 1).getCheapestTotalPrice());
         }
+    }
+
+    @Test
+    @DisplayName("search returns routes sorted by shortest duration when optimizeBy is duration")
+    void searchReturnsFastestRouteFirst() {
+        MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
+        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR", "CDG"}, "duration");
+        assertTrue(routes.size() > 1);
+        for (int i = 0; i < routes.size() - 1; i++) {
+            assertTrue(routes.get(i).getShortestTotalDurationMinutes()
+                    <= routes.get(i + 1).getShortestTotalDurationMinutes());
+        }
+    }
+
+    @Test
+    @DisplayName("search excludes permutations where a leg is missing from the index")
+    void searchExcludesPermutationWhenLegMissingFromIndex() {
+        // Only includes legs for JFK→LHR→CDG→JFK; the reverse permutation has no flights
+        HashMap<String, ArrayList<Flight>> partialIndex = new HashMap<>();
+        partialIndex.put("JFKLHR", flightIndex.get("JFKLHR"));
+        partialIndex.put("LHRCDG", flightIndex.get("LHRCDG"));
+        partialIndex.put("CDGJFK", flightIndex.get("CDGJFK"));
+
+        MultiCitySearch mcs = new MultiCitySearch(null, partialIndex);
+        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR", "CDG"}, "price");
+
+        assertEquals(1, routes.size());
+        assertArrayEquals(new String[]{"JFK", "LHR", "CDG", "JFK"}, routes.get(0).getAirports());
+    }
+
+    @Test
+    @DisplayName("search returns empty list when the flight index is empty")
+    void searchReturnsEmptyWhenIndexEmpty() {
+        MultiCitySearch mcs = new MultiCitySearch(null, new HashMap<>());
+        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR", "CDG"}, "price");
+        assertTrue(routes.isEmpty());
     }
 
     @Test
@@ -93,7 +129,7 @@ class MultiCitySearchTest {
         index.put("LHRJFK", flightIndex.get("LHRJFK"));
 
         MultiCitySearch mcs = new MultiCitySearch(null, index);
-        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR"});
+        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR"}, "price");
 
         assertFalse(routes.isEmpty());
         String[] airports = routes.get(0).getAirports();
@@ -106,7 +142,7 @@ class MultiCitySearchTest {
     @DisplayName("all routes in search results start and end at the home airport")
     void searchRoutesStartAndEndAtHome() {
         MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
-        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR", "CDG"});
+        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR", "CDG"}, "price");
 
         for (Route route : routes) {
             String[] airports = route.getAirports();
@@ -197,72 +233,11 @@ class MultiCitySearchTest {
         assertFalse(MultiCitySearch.hasFlightsForAllLegs(new String[]{"JFK", "AMS"}, flightIndex));
     }
 
-    // -----------------------------------------------------------------------
-    // searchByDate tests
-    // -----------------------------------------------------------------------
-
-    private static final LocalDate DEPARTURE = LocalDate.of(2026, 4, 15);
-
-    @Test
-    @DisplayName("searchByDate returns valid routes when all legs have flights in the index")
-    void searchByDateReturnsRoutesWhenAllLegsPresent() {
-        MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
-        ArrayList<Route> routes = mcs.searchByDate("JFK", new String[]{"LHR", "CDG"}, "price");
-        assertFalse(routes.isEmpty());
-    }
-
-    @Test
-    @DisplayName("searchByDate excludes permutations where a leg is missing from the index")
-    void searchByDateExcludesPermutationWhenLegMissingFromIndex() {
-        // Only includes legs for JFK→LHR→CDG→JFK; the reverse permutation has no flights
-        HashMap<String, ArrayList<Flight>> partialIndex = new HashMap<>();
-        partialIndex.put("JFKLHR", flightIndex.get("JFKLHR"));
-        partialIndex.put("LHRCDG", flightIndex.get("LHRCDG"));
-        partialIndex.put("CDGJFK", flightIndex.get("CDGJFK"));
-
-        MultiCitySearch mcs = new MultiCitySearch(null, partialIndex);
-        ArrayList<Route> routes = mcs.searchByDate("JFK", new String[]{"LHR", "CDG"}, "price");
-
-        assertEquals(1, routes.size());
-        assertArrayEquals(new String[]{"JFK", "LHR", "CDG", "JFK"}, routes.get(0).getAirports());
-    }
-
-    @Test
-    @DisplayName("searchByDate returns empty list when the flight index is empty")
-    void searchByDateReturnsEmptyWhenIndexEmpty() {
-        MultiCitySearch mcs = new MultiCitySearch(null, new HashMap<>());
-        ArrayList<Route> routes = mcs.searchByDate("JFK", new String[]{"LHR", "CDG"}, "price");
-        assertTrue(routes.isEmpty());
-    }
-
-    @Test
-    @DisplayName("searchByDate sorts by cheapest total price when optimizeBy is price")
-    void searchByDateSortsByPriceWhenOptimizeByPrice() {
-        MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
-        ArrayList<Route> routes = mcs.searchByDate("JFK", new String[]{"LHR", "CDG"}, "price");
-        assertTrue(routes.size() > 1);
-        for (int i = 0; i < routes.size() - 1; i++) {
-            assertTrue(routes.get(i).getCheapestTotalPrice() <= routes.get(i + 1).getCheapestTotalPrice());
-        }
-    }
-
-    @Test
-    @DisplayName("searchByDate sorts by shortest total duration when optimizeBy is duration")
-    void searchByDateSortsByDurationWhenOptimizeByDuration() {
-        MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
-        ArrayList<Route> routes = mcs.searchByDate("JFK", new String[]{"LHR", "CDG"}, "duration");
-        assertTrue(routes.size() > 1);
-        for (int i = 0; i < routes.size() - 1; i++) {
-            assertTrue(routes.get(i).getShortestTotalDurationMinutes()
-                    <= routes.get(i + 1).getShortestTotalDurationMinutes());
-        }
-    }
-
     @Test
     @DisplayName("computeLegDates assigns correct dates based on days at each airport")
     void computeLegDatesAssignsCorrectDates() {
         String[] perm = {"JFK", "LHR", "CDG", "JFK"};
-        LocalDate[] dates = MultiCitySearch.computeLegDates(perm, DEPARTURE, Map.of("LHR", 3, "CDG", 2));
+        LocalDate[] dates = MultiCitySearch.computeLegDates(perm, LocalDate.of(2026, 4, 15), Map.of("LHR", 3, "CDG", 2));
         assertEquals(LocalDate.of(2026, 4, 15), dates[0]); // JFK→LHR
         assertEquals(LocalDate.of(2026, 4, 19), dates[1]); // LHR→CDG (15 + 3 + 1)
         assertEquals(LocalDate.of(2026, 4, 22), dates[2]); // CDG→JFK (19 + 2 + 1)
