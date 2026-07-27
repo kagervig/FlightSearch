@@ -11,6 +11,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plane, AlertCircle, ChevronDown } from "lucide-react";
@@ -25,6 +26,41 @@ import { ComparisonSection } from "@/components/ComparisonSection";
 import { FinalCTASection } from "@/components/FinalCTASection";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+
+function buildSearchUrl(values: SearchFormValues): string {
+  const params = new URLSearchParams({
+    from: values.homeAirport.code,
+    destinations: values.destinations.map((d) => d.code).join(","),
+    days: values.destinations.map((d) => String(d.days)).join(","),
+    optimizeBy: values.optimizeBy,
+    date: values.departureDate,
+  });
+  return `/?${params.toString()}`;
+}
+
+function parseSearchUrl(params: { get: (key: string) => string | null }): SearchFormValues | null {
+  const from = params.get("from");
+  const destinations = params.get("destinations");
+  const days = params.get("days");
+
+  if (!from || !destinations || !days) return null;
+
+  const codes = destinations.split(",").filter(Boolean);
+  const dayNums = days.split(",").map(Number);
+
+  if (codes.length === 0 || codes.length !== dayNums.length || dayNums.some(Number.isNaN)) return null;
+
+  const optimizeParam = params.get("optimizeBy");
+  const dateParam = params.get("date");
+  const fallbackDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
+  return {
+    homeAirport: { code: from, city: "" },
+    destinations: codes.map((code, i) => ({ code, city: "", days: dayNums[i] })),
+    departureDate: dateParam ?? fallbackDate,
+    optimizeBy: optimizeParam === "duration" ? "duration" : "price",
+  };
+}
 
 interface SearchResult {
   from: string;
@@ -68,9 +104,15 @@ function sortedRoutes(
 }
 
 export default function Home() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const searchParamsRef = useRef(searchParams);
+
   const [sortBy, setSortBy] = useState<"price" | "duration">("price");
   const [showScrollCue, setShowScrollCue] = useState(false);
   const [hasScrolled, setHasScrolled] = useState(false);
+  const [formDefaults, setFormDefaults] = useState<SearchFormValues | undefined>(undefined);
+  const [formKey, setFormKey] = useState(0);
   const resultsRef = useRef<HTMLDivElement>(null);
 
   const { mutate, data, isPending, error, reset } = useMutation<
@@ -112,6 +154,23 @@ export default function Home() {
       resultsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, [data]);
+
+  // Auto-search on mount if the URL already contains search params (e.g. from a popular route link).
+  useEffect(() => {
+    const values = parseSearchUrl(searchParamsRef.current);
+    if (!values) return;
+    setFormDefaults(values);
+    setFormKey((k) => k + 1);
+    setSortBy(values.optimizeBy === "duration" ? "duration" : "price");
+    mutate(values);
+  }, []); // mount-only: reads the URL params captured in searchParamsRef
+
+  function handleSearch(values: SearchFormValues) {
+    reset();
+    setSortBy(values.optimizeBy === "duration" ? "duration" : "price");
+    mutate(values);
+    router.push(buildSearchUrl(values));
+  }
 
   const routes = data ? sortedRoutes(data.routes, sortBy) : [];
   const hasSearchState = !!(data || isPending || error);
@@ -201,11 +260,9 @@ export default function Home() {
           {/* Search panel */}
           <div className="hero-glass p-6 w-full max-w-4xl text-left">
             <FlightSearchForm
-              onSearch={(values) => {
-                reset();
-                setSortBy(values.optimizeBy === "duration" ? "duration" : "price");
-                mutate(values);
-              }}
+              key={formKey}
+              defaultValues={formDefaults}
+              onSearch={handleSearch}
               isDisabled={isPending}
               isLoading={showLoadingAnimation}
             />

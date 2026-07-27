@@ -42,9 +42,11 @@ interface FlightSearchFormProps {
   isDisabled: boolean;
   /** Shows the loading spinner after a delay; true only when the backend is slow. */
   isLoading: boolean;
+  /** Pre-fills the form; pass a React key change alongside this to remount with new values. */
+  defaultValues?: SearchFormValues;
 }
 
-export function FlightSearchForm({ onSearch, isDisabled, isLoading }: FlightSearchFormProps) {
+export function FlightSearchForm({ onSearch, isDisabled, isLoading, defaultValues }: FlightSearchFormProps) {
   const today = new Date().toISOString().split("T")[0];
   const dateInputRef = useRef<HTMLInputElement>(null);
 
@@ -54,7 +56,7 @@ export function FlightSearchForm({ onSearch, isDisabled, isLoading }: FlightSear
     formState: { errors },
   } = useForm<SearchFormValues>({
     resolver: zodResolver(schema),
-    defaultValues: {
+    defaultValues: defaultValues ?? {
       homeAirport: { code: "", city: "" },
       destinations: [{ code: "", city: "", days: 3 }],
       departureDate: today,
