@@ -10,7 +10,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -18,13 +17,11 @@ import java.util.Set;
 import com.kristian.flightsearch.datagenerator.FlightGenerator;
 import com.kristian.flightsearch.db.AirportStore;
 import com.kristian.flightsearch.db.DatabaseManager;
-import com.kristian.flightsearch.db.FlightStore;
 import com.kristian.flightsearch.flightgraph.AirportVertex;
 import com.kristian.flightsearch.flightgraph.Dijkstra;
 import com.kristian.flightsearch.flightgraph.FlightGraph;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
-import com.kristian.flightsearch.models.LegQuery;
 import com.kristian.flightsearch.models.Route;
 
 /*
@@ -42,25 +39,10 @@ public class MultiCitySearch {
 
     private final AirportStore airportStore;
     final HashMap<String, ArrayList<Flight>> flightIndex;
-    // Keyed by flight_number for O(1) lookup when applying date-specific prices
-    final HashMap<String, Flight> flightsByNumber;
-
-    public MultiCitySearch(AirportStore airportStore, FlightStore flightStore) {
-        this.airportStore = airportStore;
-        HashMap<String, Flight> flightList = flightStore.readFlights();
-        this.flightsByNumber = flightList;
-        this.flightIndex = FlightGenerator.flightMapper(flightList);
-    }
 
     public MultiCitySearch(AirportStore airportStore, HashMap<String, ArrayList<Flight>> flightIndex) {
         this.airportStore = airportStore;
         this.flightIndex = flightIndex;
-        this.flightsByNumber = new HashMap<>();
-        for (ArrayList<Flight> flights : flightIndex.values()) {
-            for (Flight f : flights) {
-                flightsByNumber.put(f.getFlightNumber(), f);
-            }
-        }
     }
 
 
@@ -202,47 +184,33 @@ public class MultiCitySearch {
     }
 
     /**
-     * Searches for valid multi-city routes for specific departure dates,
-     * sorted by the given optimizeBy criterion.
+     * Searches for valid multi-city routes sorted by the given optimizeBy criterion.
+     * Dates are computed by the caller for display only and are not used for flight lookup.
      *
-     * @param homeAirport    The origin/return airport code
-     * @param destinations   Destination airport codes to visit
-     * @param departureDate  Date of the first leg
-     * @param daysAtAirport  Map from airport code to number of full days spent there
-     * @param optimizeBy     "price" or "duration"
-     * @param flightStore    Used to fetch date-specific flights from the database
+     * @param homeAirport  The origin/return airport code
+     * @param destinations Destination airport codes to visit
+     * @param optimizeBy   "price" or "duration"
      */
-    public ArrayList<Route> searchByDate(String homeAirport, String[] destinations,
-            LocalDate departureDate, Map<String, Integer> daysAtAirport,
-            String optimizeBy, FlightStore flightStore) {
-
+    public ArrayList<Route> searchByDate(String homeAirport, String[] destinations, String optimizeBy) {
         ArrayList<String[]> validPerms = filterValidPermutations(destinations, homeAirport);
         if (validPerms.isEmpty()) return new ArrayList<>();
 
-        LinkedHashSet<LegQuery> uniqueLegs = new LinkedHashSet<>();
+        ArrayList<Route> validRoutes = new ArrayList<>();
         for (String[] perm : validPerms) {
-            LocalDate[] dates = computeLegDates(perm, departureDate, daysAtAirport);
+            ArrayList<ArrayList<Flight>> routeFlights = new ArrayList<>();
             for (int i = 0; i < perm.length - 1; i++) {
-                uniqueLegs.add(new LegQuery(perm[i], perm[i + 1], dates[i]));
+                ArrayList<Flight> legFlights = flightIndex.get(perm[i] + perm[i + 1]);
+                routeFlights.add(legFlights != null ? legFlights : new ArrayList<>());
             }
+            validRoutes.add(new Route(perm, routeFlights));
         }
 
-        HashMap<String, Map<String, Integer>> dateIndex =
-                flightStore.readFlightsForLegs(new ArrayList<>(uniqueLegs));
-        return buildRoutesFromDateIndex(validPerms, departureDate, daysAtAirport, dateIndex, flightsByNumber, optimizeBy);
-    }
-
-    /**
-     * Same as searchByDate but accepts a pre-built date-keyed price index instead of
-     * querying the database. Used in tests.
-     */
-    ArrayList<Route> searchByDateWithIndex(String homeAirport, String[] destinations,
-            LocalDate departureDate, Map<String, Integer> daysAtAirport,
-            String optimizeBy, HashMap<String, Map<String, Integer>> dateIndex) {
-
-        ArrayList<String[]> validPerms = filterValidPermutations(destinations, homeAirport);
-        if (validPerms.isEmpty()) return new ArrayList<>();
-        return buildRoutesFromDateIndex(validPerms, departureDate, daysAtAirport, dateIndex, flightsByNumber, optimizeBy);
+        if ("duration".equalsIgnoreCase(optimizeBy)) {
+            validRoutes.sort((a, b) -> Long.compare(a.getShortestTotalDurationMinutes(), b.getShortestTotalDurationMinutes()));
+        } else {
+            validRoutes.sort((a, b) -> Integer.compare(a.getCheapestTotalPrice(), b.getCheapestTotalPrice()));
+        }
+        return validRoutes;
     }
 
     // -------------------------------------------------------------------------
@@ -258,41 +226,18 @@ public class MultiCitySearch {
 
     /**
      * Searches for multi-city routes using Dijkstra to find connecting paths for
-     * any leg that has no direct flight. For each connection point the gap between
-     * the inbound arrival and outbound departure must be > MIN_CONNECTION_MINUTES,
-     * or the outbound may depart the following day (marked as overnight).
+     * any leg that has no direct flight. Connection points are validated by time gap:
+     * outbound must depart > MIN_CONNECTION_MINUTES after inbound arrives (same-day),
+     * or the outbound may depart earlier (overnight connection on the next calendar day).
      */
     public ArrayList<Route> searchByDateWithConnections(
             String homeAirport, String[] destinations,
-            LocalDate departureDate, Map<String, Integer> daysAtAirport,
-            String optimizeBy, FlightStore flightStore, FlightGraph flightGraph) {
+            String optimizeBy, FlightGraph flightGraph) {
 
         ArrayList<String[]> allPerms = flightCombinations(destinations, homeAirport);
         List<ExpandedPerm> expandedPerms = expandPermsWithConnections(allPerms, flightGraph);
         if (expandedPerms.isEmpty()) return new ArrayList<>();
-
-        LinkedHashSet<LegQuery> uniqueLegs = collectConnectionLegQueries(
-                expandedPerms, departureDate, daysAtAirport);
-        HashMap<String, Map<String, Integer>> dateIndex =
-                flightStore.readFlightsForLegs(new ArrayList<>(uniqueLegs));
-        return buildConnectionRoutes(expandedPerms, departureDate, daysAtAirport, dateIndex, optimizeBy);
-    }
-
-    /**
-     * Same as searchByDateWithConnections but accepts a pre-built date-keyed
-     * price index instead of querying the database. Used in tests.
-     */
-    ArrayList<Route> searchByDateWithConnectionsAndIndex(
-            String homeAirport, String[] destinations,
-            LocalDate departureDate, Map<String, Integer> daysAtAirport,
-            String optimizeBy,
-            HashMap<String, Map<String, Integer>> dateIndex,
-            FlightGraph flightGraph) {
-
-        ArrayList<String[]> allPerms = flightCombinations(destinations, homeAirport);
-        List<ExpandedPerm> expandedPerms = expandPermsWithConnections(allPerms, flightGraph);
-        if (expandedPerms.isEmpty()) return new ArrayList<>();
-        return buildConnectionRoutes(expandedPerms, departureDate, daysAtAirport, dateIndex, optimizeBy);
+        return buildConnectionRoutes(expandedPerms, optimizeBy);
     }
 
     // Bundles an intended permutation with its Dijkstra-expanded airport list and
@@ -300,10 +245,6 @@ public class MultiCitySearch {
     // Example: intended=[JFK,LHR,GYE,JFK], expanded=[JFK,LHR,UIO,GYE,JFK],
     //          legMap=[0,1,1,2] (legs 1 and 2 both belong to intended leg 1: LHR→GYE)
     private record ExpandedPerm(String[] intendedAirports, String[] expandedAirports, int[] legMap) {}
-
-    // Pairs a flight with the date it was fetched for, so connection validation can
-    // correctly compute same-day vs. overnight gaps.
-    private record FlightOnDate(Flight flight, LocalDate date) {}
 
     @SuppressWarnings("unchecked")
     private List<ExpandedPerm> expandPermsWithConnections(
@@ -372,234 +313,92 @@ public class MultiCitySearch {
         return path;
     }
 
-    // Collects all LegQuery objects needed to fetch date-specific prices for an
-    // expanded permutation set. For connection sub-legs, also queries the next day
-    // at each connection point to support overnight connections. A sub-leg that is
-    // the k-th hop in a chain is queried for legDate through legDate+k, covering all
-    // possible overnight combinations along that chain.
-    private LinkedHashSet<LegQuery> collectConnectionLegQueries(
-            List<ExpandedPerm> expandedPerms,
-            LocalDate departureDate, Map<String, Integer> daysAtAirport) {
-        LinkedHashSet<LegQuery> uniqueLegs = new LinkedHashSet<>();
-        for (ExpandedPerm ep : expandedPerms) {
-            LocalDate[] intendedDates = computeLegDates(
-                    ep.intendedAirports(), departureDate, daysAtAirport);
-            String[] exp = ep.expandedAirports();
-            int[] legMap = ep.legMap();
-
-            int subLegIdx = 0;
-            int prevIntendedIdx = -1;
-            for (int i = 0; i < exp.length - 1; i++) {
-                int intendedIdx = legMap[i];
-                LocalDate legDate = intendedDates[intendedIdx];
-                if (intendedIdx != prevIntendedIdx) { subLegIdx = 0; prevIntendedIdx = intendedIdx; }
-
-                // Query for every date from legDate to legDate+subLegIdx
-                // subLegIdx is how many potential overnight connections could have occurred
-                // before this sub-leg.
-                for (int d = 0; d <= subLegIdx; d++) {
-                    uniqueLegs.add(new LegQuery(exp[i], exp[i + 1], legDate.plusDays(d)));
-                }
-                subLegIdx++;
-            }
-        }
-        return uniqueLegs;
-    }
-
-    // Builds a list of Flight copies from the dateIndex entry for a given origin,
-    // destination, and date. Returns an empty list if no entry exists.
-    private ArrayList<FlightOnDate> flightsOnDate(String origin, String dest,
-            LocalDate date, HashMap<String, Map<String, Integer>> dateIndex) {
-        Map<String, Integer> priceMap = dateIndex.get(origin + dest + date);
-        ArrayList<FlightOnDate> result = new ArrayList<>();
-        if (priceMap == null) return result;
-        for (Map.Entry<String, Integer> entry : priceMap.entrySet()) {
-            Flight template = flightsByNumber.get(entry.getKey());
-            if (template == null) continue;
-            Flight copy = new Flight(template.getOrigin(), template.getDestination(),
-                    template.getDistance(), template.getDepartureTime(), template.getFlightNumber());
-            copy.setPrice(entry.getValue());
-            copy.setAirlineName(template.getAirlineName());
-            copy.setAircraftName(template.getAircraftName());
-            result.add(new FlightOnDate(copy, date));
-        }
-        return result;
-    }
-
-    // Validates a single connection point between an inbound sub-leg and an outbound
-    // sub-leg. Same-day outbounds must depart > MIN_CONNECTION_MINUTES after the inbound
-    // arrives. Next-day outbounds are always valid.
+    // Validates a connection point between inbound and outbound flights by time gap.
+    // Same-day: outbound must depart > MIN_CONNECTION_MINUTES after inbound arrives.
+    // Overnight: inbound lands same day but outbound departs "earlier" (next calendar
+    // day). Detected by: !arrivesNextDay && gap <= 0.
+    // Invalid: inbound crosses midnight and gap <= 0 (outbound would be day N+2).
     //
-    // Returns the valid [inbounds, outbounds] filtered to those involved in at least one
-    // valid pairing, or null if no valid pairing exists.
-    // Writes the minimum connection gap into minConnOut[0] and the overnight flag into
-    // isOvernightOut[0].
+    // Returns [validInbounds, validOutbounds] for all valid pairings, or null if none.
     @SuppressWarnings("unchecked")
     private ArrayList<Flight>[] validateConnectionPoint(
-            ArrayList<FlightOnDate> inbounds,
-            ArrayList<FlightOnDate> sameDayOutbounds,
-            ArrayList<FlightOnDate> nextDayOutbounds,
-            int[] minConnOut,
-            boolean[] isOvernightOut) {
+            ArrayList<Flight> inbounds, ArrayList<Flight> outbounds) {
 
         Set<Flight> validInboundSet = new HashSet<>();
-        Set<Flight> validSameDayOutSet = new HashSet<>();
-        Set<Flight> validNextDayOutSet = new HashSet<>();
-        int minMins = Integer.MAX_VALUE;
-        boolean hasSameDay = false;
+        Set<Flight> validOutboundSet = new HashSet<>();
 
-        for (FlightOnDate fod1 : inbounds) {
-            Flight f1 = fod1.flight();
+        for (Flight f1 : inbounds) {
             int arrivalMin = f1.getArrivalTime().toSecondOfDay() / 60;
-            // Detect flights that cross midnight: arrival time wraps to be before departure time.
+            // Arrival time before departure time means the flight crosses midnight.
             boolean arrivesNextDay = f1.getArrivalTime().isBefore(f1.getDepartureTime());
 
-            if (!arrivesNextDay) {
-                for (FlightOnDate fod2 : sameDayOutbounds) {
-                    Flight f2 = fod2.flight();
-                    int gap = f2.getDepartureTime().toSecondOfDay() / 60 - arrivalMin;
-                    if (gap > MIN_CONNECTION_MINUTES) {
-                        validInboundSet.add(f1);
-                        validSameDayOutSet.add(f2);
-                        hasSameDay = true;
-                        if (gap < minMins) minMins = gap;
-                    }
+            for (Flight f2 : outbounds) {
+                int gap = f2.getDepartureTime().toSecondOfDay() / 60 - arrivalMin;
+                boolean sameDayValid = gap > MIN_CONNECTION_MINUTES;
+                boolean overnightValid = !arrivesNextDay && gap <= 0;
+                if (sameDayValid || overnightValid) {
+                    validInboundSet.add(f1);
+                    validOutboundSet.add(f2);
                 }
             }
-
-            for (FlightOnDate fod2 : nextDayOutbounds) {
-                Flight f2 = fod2.flight();
-                int overnight = (24 * 60 - arrivalMin) + f2.getDepartureTime().toSecondOfDay() / 60;
-                validInboundSet.add(f1);
-                validNextDayOutSet.add(f2);
-                if (overnight < minMins) minMins = overnight;
-            }
         }
 
-        if (validInboundSet.isEmpty() || (validSameDayOutSet.isEmpty() && validNextDayOutSet.isEmpty())) {
-            return null;
-        }
-
-        minConnOut[0] = minMins;
-        isOvernightOut[0] = !hasSameDay;
+        if (validInboundSet.isEmpty() || validOutboundSet.isEmpty()) return null;
 
         ArrayList<Flight>[] result = new ArrayList[2];
         result[0] = new ArrayList<>(validInboundSet);
-        result[1] = new ArrayList<>();
-        result[1].addAll(validSameDayOutSet);
-        result[1].addAll(validNextDayOutSet);
+        result[1] = new ArrayList<>(validOutboundSet);
         return result;
     }
 
     private ArrayList<Route> buildConnectionRoutes(
-            List<ExpandedPerm> expandedPerms,
-            LocalDate departureDate, Map<String, Integer> daysAtAirport,
-            HashMap<String, Map<String, Integer>> dateIndex, String optimizeBy) {
+            List<ExpandedPerm> expandedPerms, String optimizeBy) {
 
         ArrayList<Route> validRoutes = new ArrayList<>();
 
         for (ExpandedPerm ep : expandedPerms) {
-            LocalDate[] intendedDates = computeLegDates(
-                    ep.intendedAirports(), departureDate, daysAtAirport);
             String[] exp = ep.expandedAirports();
             int[] legMap = ep.legMap();
             int numSubLegs = exp.length - 1;
 
             ArrayList<ArrayList<Flight>> subLegFlights = new ArrayList<>();
             boolean[] isConnectionLeg = new boolean[numSubLegs];
-            int[] minConnMins = new int[numSubLegs];
-            boolean[] isOvernight = new boolean[numSubLegs];
-            LocalDate[] legDates = new LocalDate[numSubLegs];
-
             boolean routeValid = true;
-
-            int subLegIdx = 0;
-            int prevIntendedIdx = -1;
-            // currentDate tracks the effective sub-leg date, shifting by 1 for each overnight.
-            LocalDate currentDate = null;
-
-            // currentInbounds holds the inbound flights for the current sub-leg.
-            // It starts null and is populated on the first sub-leg of each intended leg.
-            ArrayList<FlightOnDate> currentInbounds = null;
+            ArrayList<Flight> pendingOutbounds = null;
 
             for (int i = 0; i < numSubLegs; i++) {
                 int intendedIdx = legMap[i];
-                LocalDate intendedDate = intendedDates[intendedIdx];
-
-                // Reset state when entering a new intended leg
-                if (intendedIdx != prevIntendedIdx) {
-                    subLegIdx = 0;
-                    currentDate = intendedDate;
-                    prevIntendedIdx = intendedIdx;
-                    currentInbounds = null;
-                }
-
                 boolean isConnectionSubLeg = !exp[i + 1].equals(
                         ep.intendedAirports()[intendedIdx + 1]);
-
-                legDates[i] = currentDate;
                 isConnectionLeg[i] = isConnectionSubLeg;
 
                 if (!isConnectionSubLeg) {
-                    // Direct or final sub-leg of a connection: look up normally
-                    ArrayList<FlightOnDate> flightsHere = flightsOnDate(
-                            exp[i], exp[i + 1], currentDate, dateIndex);
-                    if (currentInbounds != null) {
-                        // This is the outbound of a connection; already validated above
-                        // (currentInbounds was set to the valid outbounds from the previous step).
-                        // Just use those flights directly.
-                        flightsHere = currentInbounds;
-                    }
-                    if (flightsHere == null || flightsHere.isEmpty()) {
-                        routeValid = false;
-                        break;
-                    }
-                    ArrayList<Flight> plain = new ArrayList<>();
-                    for (FlightOnDate fod : flightsHere) plain.add(fod.flight());
-                    subLegFlights.add(plain);
-                    currentInbounds = null;
+                    ArrayList<Flight> flights = pendingOutbounds != null
+                            ? pendingOutbounds
+                            : flightIndex.getOrDefault(exp[i] + exp[i + 1], new ArrayList<>());
+                    if (flights.isEmpty()) { routeValid = false; break; }
+                    subLegFlights.add(flights);
+                    pendingOutbounds = null;
                 } else {
-                    // Connection sub-leg: validate the pair with the next sub-leg
-                    ArrayList<FlightOnDate> inbounds = (currentInbounds != null)
-                            ? currentInbounds
-                            : flightsOnDate(exp[i], exp[i + 1], currentDate, dateIndex);
-
+                    ArrayList<Flight> inbounds = pendingOutbounds != null
+                            ? pendingOutbounds
+                            : flightIndex.getOrDefault(exp[i] + exp[i + 1], new ArrayList<>());
                     if (inbounds.isEmpty()) { routeValid = false; break; }
 
-                    ArrayList<FlightOnDate> sameDayOut = flightsOnDate(
-                            exp[i + 1], exp[i + 2], currentDate, dateIndex);
-                    ArrayList<FlightOnDate> nextDayOut = flightsOnDate(
-                            exp[i + 1], exp[i + 2], currentDate.plusDays(1), dateIndex);
-
-                    int[] minConnOut = new int[1];
-                    boolean[] isOvernightOut = new boolean[1];
+                    ArrayList<Flight> outbounds = flightIndex.getOrDefault(
+                            exp[i + 1] + exp[i + 2], new ArrayList<>());
 
                     @SuppressWarnings("unchecked")
-                    ArrayList<Flight>[] validated = validateConnectionPoint(
-                            inbounds, sameDayOut, nextDayOut, minConnOut, isOvernightOut);
-
+                    ArrayList<Flight>[] validated = validateConnectionPoint(inbounds, outbounds);
                     if (validated == null) { routeValid = false; break; }
 
-                    ArrayList<Flight> validIn = validated[0];
-                    ArrayList<Flight> validOut = validated[1];
-
-                    subLegFlights.add(validIn);
-                    minConnMins[i] = minConnOut[0];
-                    isOvernight[i] = isOvernightOut[0];
-
-                    if (isOvernightOut[0]) currentDate = currentDate.plusDays(1);
-
-                    // Pass the valid outbounds into the next sub-leg as its "inbounds"
-                    currentInbounds = new ArrayList<>();
-                    for (Flight f : validOut) currentInbounds.add(new FlightOnDate(f, currentDate));
+                    subLegFlights.add(validated[0]);
+                    pendingOutbounds = validated[1];
                 }
-
-                subLegIdx++;
             }
 
             if (routeValid) {
-                validRoutes.add(new Route(exp, subLegFlights, legDates,
-                        ep.intendedAirports(), isConnectionLeg, minConnMins, isOvernight));
+                validRoutes.add(new Route(exp, subLegFlights, ep.intendedAirports(), isConnectionLeg));
             }
         }
 
@@ -641,62 +440,6 @@ public class MultiCitySearch {
         ArrayList<String[]> all = flightCombinations(destinations, homeAirport);
         all.removeIf(perm -> !hasFlightsForAllLegs(perm, flightIndex));
         return all;
-    }
-
-    private static ArrayList<Route> buildRoutesFromDateIndex(ArrayList<String[]> perms,
-            LocalDate departureDate, Map<String, Integer> daysAtAirport,
-            HashMap<String, Map<String, Integer>> dateIndex,
-            HashMap<String, Flight> flightsByNumber, String optimizeBy) {
-
-        ArrayList<Route> validRoutes = new ArrayList<>();
-
-        for (String[] perm : perms) {
-            LocalDate[] dates = computeLegDates(perm, departureDate, daysAtAirport);
-            ArrayList<ArrayList<Flight>> routeFlights = new ArrayList<>();
-            boolean routeValid = true;
-
-            for (int i = 0; i < perm.length - 1; i++) {
-                String key = perm[i] + perm[i + 1] + dates[i].toString();
-                Map<String, Integer> priceMap = dateIndex.get(key);
-                if (priceMap == null || priceMap.isEmpty()) {
-                    routeValid = false;
-                    break;
-                }
-
-                // Build Flight objects from the in-memory index with date-specific prices
-                ArrayList<Flight> legFlights = new ArrayList<>();
-                for (Map.Entry<String, Integer> entry : priceMap.entrySet()) {
-                    Flight template = flightsByNumber.get(entry.getKey());
-                    if (template == null) continue;
-                    Flight copy = new Flight(template.getOrigin(), template.getDestination(),
-                            template.getDistance(), template.getDepartureTime(), template.getFlightNumber());
-                    copy.setPrice(entry.getValue());
-                    copy.setAirlineName(template.getAirlineName());
-                    copy.setAircraftName(template.getAircraftName());
-                    legFlights.add(copy);
-                }
-
-                if (legFlights.isEmpty()) {
-                    routeValid = false;
-                    break;
-                }
-                routeFlights.add(legFlights);
-            }
-
-            if (routeValid) {
-                validRoutes.add(new Route(perm, routeFlights));
-            }
-        }
-
-        if ("duration".equalsIgnoreCase(optimizeBy)) {
-            validRoutes.sort((a, b) ->
-                    Long.compare(a.getShortestTotalDurationMinutes(), b.getShortestTotalDurationMinutes()));
-        } else {
-            validRoutes.sort((a, b) ->
-                    Integer.compare(a.getCheapestTotalPrice(), b.getCheapestTotalPrice()));
-        }
-
-        return validRoutes;
     }
 
     public static Route findCheapestRoute(ArrayList<Route> validRoutes) {
