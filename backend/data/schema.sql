@@ -59,7 +59,7 @@ CREATE INDEX idx_city ON airports (city);
 -- ============================================================
 CREATE TABLE airlines (
     airline_code   VARCHAR(3)   PRIMARY KEY,   -- 2–3 char IATA designator
-    airline_name   TEXT         NOT NULL,
+    airline_name   TEXT,
     country        TEXT
 );
 

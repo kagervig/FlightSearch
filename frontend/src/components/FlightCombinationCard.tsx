@@ -148,10 +148,12 @@ export function FlightCombinationCard({
       )}
     >
       {/* Collapsed summary row */}
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setIsOpen((o) => !o)}
-        className="w-full flex items-center gap-3 p-5 text-left"
+        onKeyDown={(e) => e.key === "Enter" || e.key === " " ? setIsOpen((o) => !o) : undefined}
+        className="w-full flex items-center gap-3 p-5 text-left cursor-pointer"
       >
         {/* Rank badge */}
         <Badge className="shrink-0 text-sm px-3 py-1">#{rank}</Badge>
@@ -188,7 +190,7 @@ export function FlightCombinationCard({
             <ChevronDown className="w-4 h-4" />
           )}
         </span>
-      </button>
+      </div>
 
       {/* Expanded leg details */}
       <AnimatePresence initial={false}>
