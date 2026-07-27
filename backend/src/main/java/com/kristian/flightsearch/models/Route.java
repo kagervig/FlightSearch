@@ -1,8 +1,8 @@
 package com.kristian.flightsearch.models;
 
-import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 import com.kristian.flightsearch.models.Airport;
@@ -15,7 +15,6 @@ public class Route {
     private long shortestTotalDurationMinutes;
 
     // Connection metadata — null for direct-only routes
-    private LocalDate[] legDates;
     private String[] intendedAirports;
     private boolean[] isConnectionLeg;
     private int[] minConnectionMinutes;
@@ -46,15 +45,10 @@ public class Route {
     }
 
     public Route(String[] airports, ArrayList<ArrayList<Flight>> flights,
-                 LocalDate[] legDates, String[] intendedAirports,
-                 boolean[] isConnectionLeg, int[] minConnectionMinutes,
-                 boolean[] isOvernightConnectionLeg) {
+                 String[] intendedAirports, boolean[] isConnectionLeg) {
         this(airports, flights);
-        this.legDates = legDates;
         this.intendedAirports = intendedAirports;
         this.isConnectionLeg = isConnectionLeg;
-        this.minConnectionMinutes = minConnectionMinutes;
-        this.isOvernightConnectionLeg = isOvernightConnectionLeg;
     }
 
     public void printRoutes(Route r){
@@ -134,14 +128,15 @@ public class Route {
         return this.shortestTotalDurationMinutes;
     }
 
-    public LocalDate[] getLegDates() {
-        return this.legDates;
-    }
-
     // Returns the intended airports (without connection airports). Falls back to the
     // full airports array for direct-only routes that have no connection metadata.
     public String[] getIntendedAirports() {
         return intendedAirports != null ? intendedAirports : airports;
+    }
+
+    public void setConnectionMetadata(int[] minConnectionMinutes, boolean[] isOvernightConnectionLeg) {
+        this.minConnectionMinutes = minConnectionMinutes;
+        this.isOvernightConnectionLeg = isOvernightConnectionLeg;
     }
 
     public boolean isConnectionLeg(int i) {
@@ -152,8 +147,24 @@ public class Route {
         return minConnectionMinutes != null ? minConnectionMinutes[i] : 0;
     }
 
+    /** Returns the layover in minutes between the cheapest inbound and cheapest outbound flight at the connection. */
+    public int computeConnectionMinutes(int legIndex) {
+        if (legIndex + 1 >= flights.size()) return 0;
+        Flight cheapestInbound  = flights.get(legIndex).stream().min(Comparator.comparingInt(Flight::getPrice)).orElse(null);
+        Flight cheapestOutbound = flights.get(legIndex + 1).stream().min(Comparator.comparingInt(Flight::getPrice)).orElse(null);
+        if (cheapestInbound == null || cheapestOutbound == null) return 0;
+        int gap = cheapestOutbound.getDepartureTime().toSecondOfDay() / 60
+                - cheapestInbound.getArrivalTime().toSecondOfDay() / 60;
+        if (gap < 0) gap += 24 * 60; // overnight wrap
+        return gap;
+    }
+
     public boolean isOvernightConnectionLeg(int i) {
-        return isOvernightConnectionLeg != null && isOvernightConnectionLeg[i];
+        if (!isConnectionLeg(i) || i + 1 >= flights.size()) return false;
+        Flight cheapestInbound  = flights.get(i).stream().min(Comparator.comparingInt(Flight::getPrice)).orElse(null);
+        Flight cheapestOutbound = flights.get(i + 1).stream().min(Comparator.comparingInt(Flight::getPrice)).orElse(null);
+        if (cheapestInbound == null || cheapestOutbound == null) return false;
+        return cheapestOutbound.getDepartureTime().toSecondOfDay() < cheapestInbound.getArrivalTime().toSecondOfDay();
     }
 
     public boolean hasConnections() {

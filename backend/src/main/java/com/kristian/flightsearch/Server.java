@@ -22,6 +22,7 @@ package com.kristian.flightsearch;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -51,17 +52,14 @@ public class Server {
     // This is efficient because we don't reload data for every request
     private static FlightGraph flightNetwork; // Graph structure: airports connected by flights
     private static AirportStore airportStore; // Provides airport lookup by code
-    private static FlightStore flightStore; // Handles database queries for date-specific flights
-    private static HashMap<String, Flight> flightList; // All flights indexed by flight number
-    private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFK-LAX")
+    private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFKLAX")
 
-    private static final RateLimiter MULTICITY_LIMITER = new RateLimiter(1, 10_000);
+    // RateLimiter(maxRequests, windowMillis): multicity search is expensive, so 1 req/2 s per IP;
+    // airport search is lightweight but called on every keystroke, so 1 req/1 s; all other
+    // endpoints share a generous 3 req/60 s.
+    private static final RateLimiter MULTICITY_LIMITER = new RateLimiter(1, 2_000);
     private static final RateLimiter AIRPORT_SEARCH_LIMITER = new RateLimiter(1, 1_000);
     private static final RateLimiter DEFAULT_LIMITER = new RateLimiter(3, 60_000);
-
-    // The DB contains flights for April–May 2026 only
-    private static final LocalDate DB_MIN_DATE = LocalDate.of(2026, 7, 1);
-    private static final LocalDate DB_MAX_DATE = LocalDate.of(2026, 8, 31);
 
     public static void main(String[] args) {
         // Step 1: Load all flight data before starting the server
@@ -140,14 +138,14 @@ public class Server {
 
         // Step 5: Start the server
         app.start(port);
-        System.out.println("Server started on port " + port);
-        System.out.println("Endpoints:");
-        System.out.println("  GET /health");
-        System.out.println("  GET /api/airports");
-        System.out.println("  GET /api/flights/search?from=XXX&to=YYY");
-        System.out.println("  GET /api/routes/cheapest?from=XXX");
-        System.out.println("  GET /api/flights/multicity?from=XXX&destinations=YYY,ZZZ");
-        System.out.println("  GET /api/airports/search?city=XXX");
+        // System.out.println("Server started on port " + port);
+        // System.out.println("Endpoints:");
+        // System.out.println("  GET /health");
+        // System.out.println("  GET /api/airports");
+        // System.out.println("  GET /api/flights/search?from=XXX&to=YYY");
+        // System.out.println("  GET /api/routes/cheapest?from=XXX");
+        // System.out.println("  GET /api/flights/multicity?from=XXX&destinations=YYY,ZZZ");
+        // System.out.println("  GET /api/airports/search?city=XXX");
     }
 
     /**
@@ -172,19 +170,14 @@ public class Server {
 
         flightNetwork = FlightGraph.initalizeFlightGraph(airports);
 
-        flightStore = new FlightStore(DatabaseManager.getDataSource(), airportStore);
-        flightList = flightStore.readFlights();
+        FlightStore flightStore = new FlightStore(DatabaseManager.getDataSource(), airportStore);
+        HashMap<String, Flight> flightList = flightStore.readFlights();
 
-        // Create an index of flights by route (e.g., "JFK-LAX" -> [flight1, flight2,
-        // ...])
-        // This makes searching for flights between two airports O(1) instead of O(n)
         flightIndex = FlightGenerator.flightMapper(flightList);
 
-        // Add flights as edges in the graph
-        // Each flight becomes an edge connecting two airport vertices
         FlightGraph.addFlightEdges(flightNetwork, flightIndex);
 
-        System.out.println("Loaded " + airports.length + " airports and " + flightList.size() + " flights");
+        // System.out.println("Loaded " + airports.length + " airports and " + flightList.size() + " flights");
     }
 
     /**
@@ -558,35 +551,21 @@ public class Server {
             daysAtAirport.put(destinations[i], days);
         }
 
-        if (departureDate.isBefore(DB_MIN_DATE) || departureDate.isAfter(DB_MAX_DATE)) {
-            ctx.status(400).json(Map.of("error",
-                    "Departure date must be between " + DB_MIN_DATE + " and " + DB_MAX_DATE));
-            return;
-        }
-
-        int totalDays = daysAtAirport.values().stream().mapToInt(Integer::intValue).sum() + destinations.length;
-        LocalDate latestDate = departureDate.plusDays(totalDays);
-        if (latestDate.isAfter(DB_MAX_DATE)) {
-            ctx.status(400).json(Map.of("error",
-                    "Trip extends beyond available data — last flight date would be " + latestDate +
-                            " but data only goes to " + DB_MAX_DATE));
-            return;
-        }
-
         if (optimizeBy == null || (!optimizeBy.equalsIgnoreCase("price") && !optimizeBy.equalsIgnoreCase("duration"))) {
             optimizeBy = "price";
         }
 
-        MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, flightIndex);
-        ArrayList<Route> validRoutes = multiCitySearch.searchByDate(
-                from, destinations, departureDate, daysAtAirport, optimizeBy, flightStore);
+        // System.out.println("[multicity] from=" + from + " destinations=" + Arrays.toString(destinations) + " optimizeBy=" + optimizeBy);
 
-        // When no direct-flight routes exist, fall back to connection search via
-        // Dijkstra
+        MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, flightIndex);
+        ArrayList<Route> validRoutes = multiCitySearch.search(from, destinations, optimizeBy);
+        // System.out.println("[multicity] direct search: " + validRoutes.size() + " routes");
+
+        // When no direct-flight routes exist, fall back to connection search via Dijkstra
         if (validRoutes.isEmpty()) {
             validRoutes = multiCitySearch.searchByDateWithConnections(
-                    from, destinations, departureDate, daysAtAirport, optimizeBy,
-                    flightStore, flightNetwork);
+                    from, destinations, optimizeBy, flightNetwork);
+            // System.out.println("[multicity] connection search: " + validRoutes.size() + " routes");
         }
 
         if (validRoutes.isEmpty()) {
@@ -606,13 +585,21 @@ public class Server {
             String[] airports = route.getAirports();
             ArrayList<ArrayList<Flight>> allFlights = route.getFlights();
 
-            // For routes with connections, legDates are stored on the route; for
-            // direct-only
-            // routes they are computed from the intended airports and daysAtAirport.
-            LocalDate[] legDates = route.getLegDates() != null
-                    ? route.getLegDates()
-                    : MultiCitySearch.computeLegDates(
-                            route.getIntendedAirports(), departureDate, daysAtAirport);
+            // Build one date per actual leg, including connection legs.
+            // Connection legs advance by 0 (same-day) or 1 (overnight); intended
+            // destination legs advance by daysAtAirport + 1.
+            LocalDate[] legDates = new LocalDate[allFlights.size()];
+            LocalDate current = departureDate;
+            for (int i = 0; i < allFlights.size(); i++) {
+                legDates[i] = current;
+                if (i < allFlights.size() - 1) {
+                    if (route.isConnectionLeg(i)) {
+                        current = current.plusDays(route.isOvernightConnectionLeg(i) ? 1 : 0);
+                    } else {
+                        current = current.plusDays(daysAtAirport.getOrDefault(airports[i + 1], 0) + 1);
+                    }
+                }
+            }
 
             for (int i = 0; i < allFlights.size(); i++) {
                 Map<String, Object> leg = new HashMap<>();
@@ -621,7 +608,7 @@ public class Server {
                 leg.put("date", legDates[i].toString());
                 leg.put("isConnection", route.isConnectionLeg(i));
                 if (route.isConnectionLeg(i)) {
-                    leg.put("connectionMinutes", route.getMinConnectionMinutes(i));
+                    leg.put("connectionMinutes", route.computeConnectionMinutes(i));
                     leg.put("isOvernightConnection", route.isOvernightConnectionLeg(i));
                 }
 

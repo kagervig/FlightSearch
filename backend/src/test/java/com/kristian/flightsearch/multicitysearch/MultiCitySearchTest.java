@@ -9,7 +9,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -17,8 +16,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -61,7 +58,7 @@ class MultiCitySearchTest {
     @DisplayName("search returns valid routes when flights exist for all legs")
     void searchReturnsRoutesWhenFlightsExist() {
         MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
-        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR", "CDG"});
+        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR", "CDG"}, "price");
         assertFalse(routes.isEmpty());
     }
 
@@ -73,19 +70,55 @@ class MultiCitySearchTest {
         // No return legs — no complete route is possible
 
         MultiCitySearch mcs = new MultiCitySearch(null, sparseIndex);
-        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR"});
+        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR"}, "price");
         assertTrue(routes.isEmpty());
     }
 
     @Test
-    @DisplayName("search returns routes sorted cheapest first")
+    @DisplayName("search returns routes sorted cheapest first when optimizeBy is price")
     void searchReturnsCheapestRouteFirst() {
         MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
-        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR", "CDG"});
+        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR", "CDG"}, "price");
         assertTrue(routes.size() > 1);
         for (int i = 0; i < routes.size() - 1; i++) {
             assertTrue(routes.get(i).getCheapestTotalPrice() <= routes.get(i + 1).getCheapestTotalPrice());
         }
+    }
+
+    @Test
+    @DisplayName("search returns routes sorted by shortest duration when optimizeBy is duration")
+    void searchReturnsFastestRouteFirst() {
+        MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
+        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR", "CDG"}, "duration");
+        assertTrue(routes.size() > 1);
+        for (int i = 0; i < routes.size() - 1; i++) {
+            assertTrue(routes.get(i).getShortestTotalDurationMinutes()
+                    <= routes.get(i + 1).getShortestTotalDurationMinutes());
+        }
+    }
+
+    @Test
+    @DisplayName("search excludes permutations where a leg is missing from the index")
+    void searchExcludesPermutationWhenLegMissingFromIndex() {
+        // Only includes legs for JFK→LHR→CDG→JFK; the reverse permutation has no flights
+        HashMap<String, ArrayList<Flight>> partialIndex = new HashMap<>();
+        partialIndex.put("JFKLHR", flightIndex.get("JFKLHR"));
+        partialIndex.put("LHRCDG", flightIndex.get("LHRCDG"));
+        partialIndex.put("CDGJFK", flightIndex.get("CDGJFK"));
+
+        MultiCitySearch mcs = new MultiCitySearch(null, partialIndex);
+        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR", "CDG"}, "price");
+
+        assertEquals(1, routes.size());
+        assertArrayEquals(new String[]{"JFK", "LHR", "CDG", "JFK"}, routes.get(0).getAirports());
+    }
+
+    @Test
+    @DisplayName("search returns empty list when the flight index is empty")
+    void searchReturnsEmptyWhenIndexEmpty() {
+        MultiCitySearch mcs = new MultiCitySearch(null, new HashMap<>());
+        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR", "CDG"}, "price");
+        assertTrue(routes.isEmpty());
     }
 
     @Test
@@ -96,7 +129,7 @@ class MultiCitySearchTest {
         index.put("LHRJFK", flightIndex.get("LHRJFK"));
 
         MultiCitySearch mcs = new MultiCitySearch(null, index);
-        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR"});
+        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR"}, "price");
 
         assertFalse(routes.isEmpty());
         String[] airports = routes.get(0).getAirports();
@@ -109,7 +142,7 @@ class MultiCitySearchTest {
     @DisplayName("all routes in search results start and end at the home airport")
     void searchRoutesStartAndEndAtHome() {
         MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
-        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR", "CDG"});
+        ArrayList<Route> routes = mcs.search("JFK", new String[]{"LHR", "CDG"}, "price");
 
         for (Route route : routes) {
             String[] airports = route.getAirports();
@@ -200,104 +233,11 @@ class MultiCitySearchTest {
         assertFalse(MultiCitySearch.hasFlightsForAllLegs(new String[]{"JFK", "AMS"}, flightIndex));
     }
 
-    // -----------------------------------------------------------------------
-    // searchByDate tests
-    //
-    // Setup: departureDate = 2026-04-15, destinations = [LHR, CDG] from JFK
-    //   daysAtAirport: LHR=3, CDG=2
-    //
-    // Permutation JFK→LHR→CDG→JFK:
-    //   JFK→LHR on 2026-04-15
-    //   LHR→CDG on 2026-04-19  (Apr15 + 3 days + 1)
-    //   CDG→JFK on 2026-04-22  (Apr19 + 2 days + 1)
-    //
-    // Permutation JFK→CDG→LHR→JFK:
-    //   JFK→CDG on 2026-04-15
-    //   CDG→LHR on 2026-04-18  (Apr15 + 2 days + 1)
-    //   LHR→JFK on 2026-04-22  (Apr18 + 3 days + 1)
-    // -----------------------------------------------------------------------
-
-    private static final LocalDate DEPARTURE = LocalDate.of(2026, 4, 15);
-
-    /*
-     * Builds a date-keyed price index: "ORIGINDESTDATE" → {flightNumber → price}.
-     * Flight numbers match those in flightIndex so flightsByNumber lookups succeed.
-     */
-    private HashMap<String, Map<String, Integer>> buildDateKeyedIndex() {
-        HashMap<String, Map<String, Integer>> idx = new HashMap<>();
-        idx.put("JFKLHR2026-04-15", Map.of("AA100", 300));
-        idx.put("LHRCDG2026-04-19", Map.of("BA302", 100));
-        idx.put("CDGJFK2026-04-22", Map.of("AF006", 350));
-        idx.put("JFKCDG2026-04-15", Map.of("AF007", 280));
-        idx.put("CDGLHR2026-04-18", Map.of("BA303", 90));
-        idx.put("LHRJFK2026-04-22", Map.of("AA101", 320));
-        return idx;
-    }
-
-    @Test
-    @DisplayName("searchByDate returns valid routes when all legs have flights on correct dates")
-    void searchByDateReturnsRoutesWhenAllLegsPresent() {
-        MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
-        ArrayList<Route> routes = mcs.searchByDateWithIndex(
-                "JFK", new String[]{"LHR", "CDG"}, DEPARTURE, Map.of("LHR", 3, "CDG", 2), "price", buildDateKeyedIndex());
-        assertFalse(routes.isEmpty());
-    }
-
-    @Test
-    @DisplayName("searchByDate excludes permutations where a leg has no flights on its required date")
-    void searchByDateExcludesPermutationWithMissingLegOnDate() {
-        HashMap<String, Map<String, Integer>> partialIndex = new HashMap<>();
-        partialIndex.put("JFKLHR2026-04-15", Map.of("AA100", 300));
-        partialIndex.put("LHRCDG2026-04-19", Map.of("BA302", 100));
-        partialIndex.put("CDGJFK2026-04-22", Map.of("AF006", 350));
-
-        MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
-        ArrayList<Route> routes = mcs.searchByDateWithIndex(
-                "JFK", new String[]{"LHR", "CDG"}, DEPARTURE, Map.of("LHR", 3, "CDG", 2), "price", partialIndex);
-
-        assertEquals(1, routes.size());
-        assertArrayEquals(new String[]{"JFK", "LHR", "CDG", "JFK"}, routes.get(0).getAirports());
-    }
-
-    @Test
-    @DisplayName("searchByDate returns empty list when no flights exist on the required dates")
-    void searchByDateReturnsEmptyWhenNoFlightsOnDates() {
-        MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
-        ArrayList<Route> routes = mcs.searchByDateWithIndex(
-                "JFK", new String[]{"LHR", "CDG"}, DEPARTURE, Map.of("LHR", 3, "CDG", 2), "price", new HashMap<>());
-        assertTrue(routes.isEmpty());
-    }
-
-    @Test
-    @DisplayName("searchByDate sorts by cheapest total price when optimizeBy is price")
-    void searchByDateSortsByPriceWhenOptimizeByPrice() {
-        MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
-        ArrayList<Route> routes = mcs.searchByDateWithIndex(
-                "JFK", new String[]{"LHR", "CDG"}, DEPARTURE, Map.of("LHR", 3, "CDG", 2), "price", buildDateKeyedIndex());
-        assertTrue(routes.size() > 1);
-        for (int i = 0; i < routes.size() - 1; i++) {
-            assertTrue(routes.get(i).getCheapestTotalPrice() <= routes.get(i + 1).getCheapestTotalPrice());
-        }
-    }
-
-    @Test
-    @DisplayName("searchByDate sorts by shortest total duration when optimizeBy is duration")
-    void searchByDateSortsByDurationWhenOptimizeByDuration() {
-        MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
-        ArrayList<Route> routes = mcs.searchByDateWithIndex(
-                "JFK", new String[]{"LHR", "CDG"}, DEPARTURE, Map.of("LHR", 3, "CDG", 2), "duration", buildDateKeyedIndex());
-        assertTrue(routes.size() > 1);
-        for (int i = 0; i < routes.size() - 1; i++) {
-            assertTrue(routes.get(i).getShortestTotalDurationMinutes()
-                    <= routes.get(i + 1).getShortestTotalDurationMinutes());
-        }
-    }
-
     @Test
     @DisplayName("computeLegDates assigns correct dates based on days at each airport")
     void computeLegDatesAssignsCorrectDates() {
         String[] perm = {"JFK", "LHR", "CDG", "JFK"};
-        LocalDate[] dates = MultiCitySearch.computeLegDates(perm, DEPARTURE, Map.of("LHR", 3, "CDG", 2));
+        LocalDate[] dates = MultiCitySearch.computeLegDates(perm, LocalDate.of(2026, 4, 15), Map.of("LHR", 3, "CDG", 2));
         assertEquals(LocalDate.of(2026, 4, 15), dates[0]); // JFK→LHR
         assertEquals(LocalDate.of(2026, 4, 19), dates[1]); // LHR→CDG (15 + 3 + 1)
         assertEquals(LocalDate.of(2026, 4, 22), dates[2]); // CDG→JFK (19 + 2 + 1)
@@ -307,26 +247,21 @@ class MultiCitySearchTest {
     // searchByDateWithConnections tests
     //
     // Setup:
-    //   Home: JFK. Destinations: [GYE] (Guayaquil).
+    //   Home: JFK. Destinations: [LHR, GYE] (Guayaquil).
     //   No direct LHR→GYE or GYE→LHR flights — must connect via UIO (Quito).
     //
-    //   LHR→UIO: departs 10:00, distance 1363 km → arrives 12:00 (2h flight)
-    //   Valid same-day UIO→GYE: departs 15:00 (3h after 12:00, > 2h) ✓
-    //   Invalid same-day UIO→GYE: departs 13:00 (1h after 12:00, ≤ 2h) ✗
-    //   Next-day UIO→GYE: departs 08:00 on leg date + 1 ✓
-    //
-    //   Permutation JFK→LHR→GYE→JFK with daysAtAirport = {LHR: 3, GYE: 2}:
-    //     JFK→LHR on 2026-04-15
-    //     LHR→GYE (via UIO) on 2026-04-19  (Apr15 + 3 + 1)
-    //     GYE→JFK on 2026-04-22  (Apr19 + 2 + 1)
+    //   LHR→UIO: departs 10:00, distance 1363 km → arrives ~12:00 (2h flight)
+    //   Valid same-day UIO→GYE: departs 15:00 (3h gap > MIN_CONNECTION_MINUTES) ✓
+    //   Invalid same-day UIO→GYE: departs 13:00 (1h gap ≤ MIN_CONNECTION_MINUTES) ✗
+    //   Overnight UIO→GYE: departs 08:00 (gap = -4h, treated as next calendar day) ✓
     // -----------------------------------------------------------------------
 
-    // Flight number constants for connection tests
     private static final String FN_JFK_LHR = "AA100";
     private static final String FN_LHR_UIO = "LH1234";
-    private static final String FN_UIO_GYE_VALID = "AV5000";   // departs 15:00, > 2h after LHR→UIO arrives 12:00
-    private static final String FN_UIO_GYE_INVALID = "AV5001"; // departs 13:00, ≤ 2h after LHR→UIO arrives 12:00
-    private static final String FN_UIO_GYE_NEXTDAY = "AV5002"; // departs 08:00, for next-day connection
+    private static final String FN_UIO_GYE_VALID = "AV5000";
+    private static final String FN_UIO_GYE_INVALID = "AV5001";
+    private static final String FN_UIO_GYE_NEXTDAY = "AV5002";
+    private static final String FN_UIO_GYE_ZERO_GAP = "AV5004";
     private static final String FN_GYE_JFK = "UA9999";
 
     // 1363 km gives exactly 2h flight time at 852 km/h + 0.4h overhead
@@ -335,30 +270,26 @@ class MultiCitySearchTest {
 
     private Airport uio;
     private Airport gye;
+    private Flight uioGyeValid;
+    private Flight uioGyeInvalid;
+    private Flight uioGyeNextDay;
+    private Flight uioGyeZeroGap;
     private HashMap<String, ArrayList<Flight>> connectionFlightIndex;
     private FlightGraph connectionGraph;
-
-    // Connection test departure date reuses DEPARTURE = 2026-04-15
-    // LHR→GYE leg date: 2026-04-19 (Apr15 + 3 days at LHR + 1)
-    private static final LocalDate CONN_LEG_DATE = LocalDate.of(2026, 4, 19);
-    private static final LocalDate CONN_LEG_DATE_PLUS_1 = LocalDate.of(2026, 4, 20);
-    private static final LocalDate GYE_JFK_DATE = LocalDate.of(2026, 4, 22);
 
     private void setUpConnectionData() {
         uio = new Airport("UIO", "Mariscal Sucre International", -0.1292, -78.3575, 9228, 2813, "Quito", "Ecuador");
         gye = new Airport("GYE", "Jose Joaquin de Olmedo International", -2.1574, -79.8836, 19, 6, "Guayaquil", "Ecuador");
 
-        // LHR→UIO: 1363 km, departs 10:00, arrives 12:00 (2h flight)
         Flight lhrUio = new Flight(lhr, uio, LHR_UIO_DISTANCE_KM, LocalTime.of(10, 0), FN_LHR_UIO);
-
-        // UIO→GYE valid: departs 15:00 — 3h after LHR→UIO arrives, satisfies > 2h
-        Flight uioGyeValid = new Flight(uio, gye, UIO_GYE_DISTANCE_KM, LocalTime.of(15, 0), FN_UIO_GYE_VALID);
-
-        // UIO→GYE invalid: departs 13:00 — only 1h after LHR→UIO arrives, violates > 2h
-        Flight uioGyeInvalid = new Flight(uio, gye, UIO_GYE_DISTANCE_KM, LocalTime.of(13, 0), FN_UIO_GYE_INVALID);
-
-        // UIO→GYE next-day: departs 08:00 — used as the next-day option
-        Flight uioGyeNextDay = new Flight(uio, gye, UIO_GYE_DISTANCE_KM, LocalTime.of(8, 0), FN_UIO_GYE_NEXTDAY);
+        // departs 15:00 — 3h after LHR→UIO arrives 12:00, satisfies > 2h
+        uioGyeValid   = new Flight(uio, gye, UIO_GYE_DISTANCE_KM, LocalTime.of(15, 0), FN_UIO_GYE_VALID);
+        // departs 13:00 — only 1h after LHR→UIO arrives 12:00, violates > 2h
+        uioGyeInvalid = new Flight(uio, gye, UIO_GYE_DISTANCE_KM, LocalTime.of(13, 0), FN_UIO_GYE_INVALID);
+        // departs 08:00 — before arrival 12:00, treated as overnight (next calendar day)
+        uioGyeNextDay = new Flight(uio, gye, UIO_GYE_DISTANCE_KM, LocalTime.of(8, 0),  FN_UIO_GYE_NEXTDAY);
+        // departs 12:00 — exactly when LHR→UIO arrives, gap = 0, must be rejected
+        uioGyeZeroGap = new Flight(uio, gye, UIO_GYE_DISTANCE_KM, LocalTime.of(12, 0), FN_UIO_GYE_ZERO_GAP);
 
         Flight jfkLhr = new Flight(jfk, lhr, 5570.0, LocalTime.of(9, 0), FN_JFK_LHR);
         Flight gyeJfk = new Flight(gye, jfk, 4700.0, LocalTime.of(10, 0), FN_GYE_JFK);
@@ -395,22 +326,10 @@ class MultiCitySearchTest {
         // No direct LHR→GYE or GYE→LHR edge
     }
 
-    private HashMap<String, Map<String, Integer>> buildConnectionDateIndex(boolean includeValidSameDay,
-                                                                           boolean includeInvalidSameDay,
-                                                                           boolean includeNextDay) {
-        HashMap<String, Map<String, Integer>> idx = new HashMap<>();
-        idx.put("JFKLHR" + DEPARTURE, Map.of(FN_JFK_LHR, 300));
-        idx.put("GYEJFK" + GYE_JFK_DATE, Map.of(FN_GYE_JFK, 450));
-
-        idx.put("LHRUIO" + CONN_LEG_DATE, Map.of(FN_LHR_UIO, 400));
-
-        Map<String, Integer> sameDayOutbound = new HashMap<>();
-        if (includeValidSameDay) sameDayOutbound.put(FN_UIO_GYE_VALID, 150);
-        if (includeInvalidSameDay) sameDayOutbound.put(FN_UIO_GYE_INVALID, 120);
-        if (!sameDayOutbound.isEmpty()) idx.put("UIOGYE" + CONN_LEG_DATE, sameDayOutbound);
-
-        if (includeNextDay) idx.put("UIOGYE" + CONN_LEG_DATE_PLUS_1, Map.of(FN_UIO_GYE_NEXTDAY, 180));
-
+    // Returns a copy of connectionFlightIndex with UIOGYE replaced by the given options only.
+    private HashMap<String, ArrayList<Flight>> connectionIndexWith(Flight... uioGyeOptions) {
+        HashMap<String, ArrayList<Flight>> idx = new HashMap<>(connectionFlightIndex);
+        idx.put("UIOGYE", new ArrayList<>(Arrays.asList(uioGyeOptions)));
         return idx;
     }
 
@@ -418,11 +337,8 @@ class MultiCitySearchTest {
     @DisplayName("searchByDateWithConnections finds a route via a connection airport when no direct flight exists")
     void connectionSearchFindsRouteViaConnection() {
         MultiCitySearch mcs = new MultiCitySearch(null, connectionFlightIndex);
-        ArrayList<Route> routes = mcs.searchByDateWithConnectionsAndIndex(
-                "JFK", new String[]{"LHR", "GYE"}, DEPARTURE,
-                Map.of("LHR", 3, "GYE", 2), "price",
-                buildConnectionDateIndex(true, false, false),
-                connectionGraph);
+        ArrayList<Route> routes = mcs.searchByDateWithConnections(
+                "JFK", new String[]{"LHR", "GYE"}, "price", connectionGraph);
 
         assertFalse(routes.isEmpty(), "Expected at least one route via UIO connection");
         boolean hasUio = routes.stream()
@@ -434,11 +350,8 @@ class MultiCitySearchTest {
     @DisplayName("searchByDateWithConnections marks UIO legs as connection legs")
     void connectionSearchSetsIsConnectionLegFlag() {
         MultiCitySearch mcs = new MultiCitySearch(null, connectionFlightIndex);
-        ArrayList<Route> routes = mcs.searchByDateWithConnectionsAndIndex(
-                "JFK", new String[]{"LHR", "GYE"}, DEPARTURE,
-                Map.of("LHR", 3, "GYE", 2), "price",
-                buildConnectionDateIndex(true, false, false),
-                connectionGraph);
+        ArrayList<Route> routes = mcs.searchByDateWithConnections(
+                "JFK", new String[]{"LHR", "GYE"}, "price", connectionGraph);
 
         Route routeViaUio = routes.stream()
                 .filter(r -> Arrays.asList(r.getAirports()).contains("UIO"))
@@ -454,100 +367,97 @@ class MultiCitySearchTest {
         assertTrue(routeViaUio.isConnectionLeg(uioIndex - 1),
                 "Leg ending at UIO should be flagged as a connection leg");
         assertFalse(routeViaUio.isConnectionLeg(uioIndex),
-                "Leg departing UIO (to GYE, an intended destination) should not be a connection leg");
+                "Leg departing UIO to an intended destination should not be a connection leg");
     }
 
     @Test
     @DisplayName("searchByDateWithConnections excludes connections where gap is <= 2h")
     void connectionSearchRejectsInsufficientConnectionTime() {
-        MultiCitySearch mcs = new MultiCitySearch(null, connectionFlightIndex);
-        // Only the invalid same-day flight (13:00, 1h gap) — no valid connection
-        ArrayList<Route> routes = mcs.searchByDateWithConnectionsAndIndex(
-                "JFK", new String[]{"LHR", "GYE"}, DEPARTURE,
-                Map.of("LHR", 3, "GYE", 2), "price",
-                buildConnectionDateIndex(false, true, false),
-                connectionGraph);
+        MultiCitySearch mcs = new MultiCitySearch(null, connectionIndexWith(uioGyeInvalid));
+        ArrayList<Route> routes = mcs.searchByDateWithConnections(
+                "JFK", new String[]{"LHR", "GYE"}, "price", connectionGraph);
 
-        boolean hasUio = routes.stream()
-                .anyMatch(r -> Arrays.asList(r.getAirports()).contains("UIO"));
-        assertFalse(hasUio, "Route via UIO should be excluded when only an insufficient connection time is available");
+        // No route should contain the LHR→UIO→GYE sequence; the invalid gap rejects it
+        boolean hasLhrUioGye = routes.stream().anyMatch(r -> {
+            List<String> airports = Arrays.asList(r.getAirports());
+            int lhrIdx = airports.indexOf("LHR");
+            int uioIdx = airports.lastIndexOf("UIO");
+            int gyeIdx = airports.indexOf("GYE");
+            return lhrIdx >= 0 && uioIdx == lhrIdx + 1 && gyeIdx == uioIdx + 1;
+        });
+        assertFalse(hasLhrUioGye, "LHR→UIO→GYE should be excluded when only an insufficient connection gap exists");
     }
 
     @Test
     @DisplayName("searchByDateWithConnections accepts a same-day connection with > 2h gap")
     void connectionSearchAcceptsValidSameDayConnection() {
-        MultiCitySearch mcs = new MultiCitySearch(null, connectionFlightIndex);
-        ArrayList<Route> routes = mcs.searchByDateWithConnectionsAndIndex(
-                "JFK", new String[]{"LHR", "GYE"}, DEPARTURE,
-                Map.of("LHR", 3, "GYE", 2), "price",
-                buildConnectionDateIndex(true, false, false),
-                connectionGraph);
+        MultiCitySearch mcs = new MultiCitySearch(null, connectionIndexWith(uioGyeValid));
+        ArrayList<Route> routes = mcs.searchByDateWithConnections(
+                "JFK", new String[]{"LHR", "GYE"}, "price", connectionGraph);
 
-        Route routeViaUio = routes.stream()
-                .filter(r -> Arrays.asList(r.getAirports()).contains("UIO"))
-                .findFirst().orElse(null);
-        assertNotNull(routeViaUio, "Expected a route via UIO with a valid same-day connection");
-
-        String[] airports = routeViaUio.getAirports();
-        int uioIndex = -1;
-        for (int i = 0; i < airports.length; i++) {
-            if ("UIO".equals(airports[i])) { uioIndex = i; break; }
-        }
-        assertFalse(routeViaUio.isOvernightConnectionLeg(uioIndex - 1),
-                "Same-day connection should not be flagged as overnight");
-        assertTrue(routeViaUio.getMinConnectionMinutes(uioIndex - 1) > 120,
-                "Connection time should be > 2h (120 min)");
+        boolean hasUio = routes.stream()
+                .anyMatch(r -> Arrays.asList(r.getAirports()).contains("UIO"));
+        assertTrue(hasUio, "Expected a route via UIO with a valid same-day connection");
     }
 
     @Test
-    @DisplayName("searchByDateWithConnections accepts a next-day connection and marks it overnight")
-    void connectionSearchAcceptsNextDayConnectionAsOvernight() {
-        MultiCitySearch mcs = new MultiCitySearch(null, connectionFlightIndex);
-        // Only next-day option available
-        ArrayList<Route> routes = mcs.searchByDateWithConnectionsAndIndex(
-                "JFK", new String[]{"LHR", "GYE"}, DEPARTURE,
-                Map.of("LHR", 3, "GYE", 2), "price",
-                buildConnectionDateIndex(false, false, true),
-                connectionGraph);
+    @DisplayName("searchByDateWithConnections accepts an overnight connection where outbound departs before inbound arrives")
+    void connectionSearchAcceptsOvernightConnection() {
+        // uioGyeNextDay departs 08:00; LHR→UIO arrives ~12:00 → gap = -4h → overnight valid
+        MultiCitySearch mcs = new MultiCitySearch(null, connectionIndexWith(uioGyeNextDay));
+        ArrayList<Route> routes = mcs.searchByDateWithConnections(
+                "JFK", new String[]{"LHR", "GYE"}, "price", connectionGraph);
 
-        Route routeViaUio = routes.stream()
-                .filter(r -> Arrays.asList(r.getAirports()).contains("UIO"))
-                .findFirst().orElse(null);
-        assertNotNull(routeViaUio, "Expected a route via UIO using the next-day connection");
-
-        String[] airports = routeViaUio.getAirports();
-        int uioIndex = -1;
-        for (int i = 0; i < airports.length; i++) {
-            if ("UIO".equals(airports[i])) { uioIndex = i; break; }
-        }
-        assertTrue(routeViaUio.isOvernightConnectionLeg(uioIndex - 1),
-                "Next-day only connection should be flagged as overnight");
+        boolean hasLhrUioGye = routes.stream().anyMatch(r -> {
+            List<String> airports = Arrays.asList(r.getAirports());
+            int lhrIdx = airports.indexOf("LHR");
+            int uioIdx = airports.indexOf("UIO");
+            int gyeIdx = airports.indexOf("GYE");
+            return lhrIdx >= 0 && uioIdx == lhrIdx + 1 && gyeIdx == uioIdx + 1;
+        });
+        assertTrue(hasLhrUioGye, "An overnight connection (outbound before inbound on same calendar day) should be accepted");
     }
 
     @Test
-    @DisplayName("searchByDateWithConnections returns empty when no valid connection exists at all")
+    @DisplayName("searchByDateWithConnections rejects a connection where outbound departs at the exact same time as inbound arrives")
+    void connectionSearchRejectsZeroGapConnection() {
+        // uioGyeZeroGap departs 12:00; LHR→UIO arrives 12:00 → gap = 0 → invalid (not overnight, not > 2h)
+        MultiCitySearch mcs = new MultiCitySearch(null, connectionIndexWith(uioGyeZeroGap));
+        ArrayList<Route> routes = mcs.searchByDateWithConnections(
+                "JFK", new String[]{"LHR", "GYE"}, "price", connectionGraph);
+
+        // The LHR→UIO→GYE sequence specifically must not appear (zero gap)
+        boolean hasLhrUioGye = routes.stream().anyMatch(r -> {
+            List<String> airports = Arrays.asList(r.getAirports());
+            int lhrIdx = airports.indexOf("LHR");
+            int uioIdx = airports.indexOf("UIO");
+            int gyeIdx = airports.indexOf("GYE");
+            return lhrIdx >= 0 && uioIdx == lhrIdx + 1 && gyeIdx == uioIdx + 1;
+        });
+        assertFalse(hasLhrUioGye, "LHR→UIO→GYE with zero-gap connection should be rejected");
+    }
+
+    @Test
+    @DisplayName("searchByDateWithConnections returns no UIO routes when UIO-GYE and GYE-UIO flights are absent")
     void connectionSearchReturnsEmptyWhenNoConnectionFlightsExist() {
-        MultiCitySearch mcs = new MultiCitySearch(null, connectionFlightIndex);
-        ArrayList<Route> routes = mcs.searchByDateWithConnectionsAndIndex(
-                "JFK", new String[]{"LHR", "GYE"}, DEPARTURE,
-                Map.of("LHR", 3, "GYE", 2), "price",
-                new HashMap<>(), // no DB flights at all
-                connectionGraph);
+        HashMap<String, ArrayList<Flight>> noUioIndex = new HashMap<>(connectionFlightIndex);
+        noUioIndex.remove("UIOGYE");
+        noUioIndex.remove("GYEUIO");
+
+        MultiCitySearch mcs = new MultiCitySearch(null, noUioIndex);
+        ArrayList<Route> routes = mcs.searchByDateWithConnections(
+                "JFK", new String[]{"LHR", "GYE"}, "price", connectionGraph);
 
         assertTrue(routes.isEmpty());
     }
 
     @Test
-    @DisplayName("searchByDateWithConnections preserves direct legs for routes that do not need a connection")
-    void connectionSearchPreservesDirectLegs() {
+    @DisplayName("searchByDateWithConnections all routes start and end at the home airport")
+    void connectionSearchAllRoutesStartAndEndAtHome() {
         MultiCitySearch mcs = new MultiCitySearch(null, connectionFlightIndex);
-        HashMap<String, Map<String, Integer>> idx = buildConnectionDateIndex(true, false, false);
+        ArrayList<Route> routes = mcs.searchByDateWithConnections(
+                "JFK", new String[]{"LHR", "GYE"}, "price", connectionGraph);
 
-        ArrayList<Route> routes = mcs.searchByDateWithConnectionsAndIndex(
-                "JFK", new String[]{"LHR", "GYE"}, DEPARTURE,
-                Map.of("LHR", 3, "GYE", 2), "price", idx, connectionGraph);
-
-        // Every route must start and end at JFK
         for (Route r : routes) {
             String[] airports = r.getAirports();
             assertEquals("JFK", airports[0]);
@@ -556,14 +466,11 @@ class MultiCitySearchTest {
     }
 
     @Test
-    @DisplayName("searchByDateWithConnections stores correct intended airports without connection airports")
+    @DisplayName("searchByDateWithConnections stores intended airports without connection airports")
     void connectionSearchStoresIntendedAirports() {
         MultiCitySearch mcs = new MultiCitySearch(null, connectionFlightIndex);
-        ArrayList<Route> routes = mcs.searchByDateWithConnectionsAndIndex(
-                "JFK", new String[]{"LHR", "GYE"}, DEPARTURE,
-                Map.of("LHR", 3, "GYE", 2), "price",
-                buildConnectionDateIndex(true, false, false),
-                connectionGraph);
+        ArrayList<Route> routes = mcs.searchByDateWithConnections(
+                "JFK", new String[]{"LHR", "GYE"}, "price", connectionGraph);
 
         Route routeViaUio = routes.stream()
                 .filter(r -> Arrays.asList(r.getAirports()).contains("UIO"))

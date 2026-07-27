@@ -19,8 +19,11 @@ fi
 echo "Creating schema..."
 psql "$CONN" -f "$DATA_DIR/schema.sql"
 
+echo "Clearing existing data..."
+psql "$CONN" -c "TRUNCATE flights, airlines, airports, planes CASCADE;" 2>/dev/null || true
+
 echo "Loading planes..."
-psql "$CONN" -c "\copy planes (name, iata_code) FROM '$DATA_DIR/planes.csv' CSV NULL AS ''"
+psql "$CONN" -c "\copy planes (iata_code, name) FROM '$DATA_DIR/planes.csv' CSV HEADER NULL AS ''"
 
 echo "Loading airports..."
 psql "$CONN" << SQL
