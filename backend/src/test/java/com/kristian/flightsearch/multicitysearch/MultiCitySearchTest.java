@@ -261,6 +261,7 @@ class MultiCitySearchTest {
     private static final String FN_UIO_GYE_VALID = "AV5000";
     private static final String FN_UIO_GYE_INVALID = "AV5001";
     private static final String FN_UIO_GYE_NEXTDAY = "AV5002";
+    private static final String FN_UIO_GYE_ZERO_GAP = "AV5004";
     private static final String FN_GYE_JFK = "UA9999";
 
     // 1363 km gives exactly 2h flight time at 852 km/h + 0.4h overhead
@@ -272,6 +273,7 @@ class MultiCitySearchTest {
     private Flight uioGyeValid;
     private Flight uioGyeInvalid;
     private Flight uioGyeNextDay;
+    private Flight uioGyeZeroGap;
     private HashMap<String, ArrayList<Flight>> connectionFlightIndex;
     private FlightGraph connectionGraph;
 
@@ -286,6 +288,8 @@ class MultiCitySearchTest {
         uioGyeInvalid = new Flight(uio, gye, UIO_GYE_DISTANCE_KM, LocalTime.of(13, 0), FN_UIO_GYE_INVALID);
         // departs 08:00 — before arrival 12:00, treated as overnight (next calendar day)
         uioGyeNextDay = new Flight(uio, gye, UIO_GYE_DISTANCE_KM, LocalTime.of(8, 0),  FN_UIO_GYE_NEXTDAY);
+        // departs 12:00 — exactly when LHR→UIO arrives, gap = 0, must be rejected
+        uioGyeZeroGap = new Flight(uio, gye, UIO_GYE_DISTANCE_KM, LocalTime.of(12, 0), FN_UIO_GYE_ZERO_GAP);
 
         Flight jfkLhr = new Flight(jfk, lhr, 5570.0, LocalTime.of(9, 0), FN_JFK_LHR);
         Flight gyeJfk = new Flight(gye, jfk, 4700.0, LocalTime.of(10, 0), FN_GYE_JFK);
@@ -397,16 +401,40 @@ class MultiCitySearchTest {
     }
 
     @Test
-    @DisplayName("searchByDateWithConnections accepts an overnight connection where outbound departs before inbound arrives")
-    void connectionSearchAcceptsOvernightConnection() {
-        // uioGyeNextDay departs 08:00; LHR→UIO arrives ~12:00 → gap = -4h → overnight valid
+    @DisplayName("searchByDateWithConnections rejects a connection where outbound departs before inbound arrives")
+    void connectionSearchRejectsOvernightConnection() {
+        // uioGyeNextDay departs 08:00; LHR→UIO arrives ~12:00 → gap = -4h → invalid (same-day rule only)
         MultiCitySearch mcs = new MultiCitySearch(null, connectionIndexWith(uioGyeNextDay));
         ArrayList<Route> routes = mcs.searchByDateWithConnections(
                 "JFK", new String[]{"LHR", "GYE"}, "price", connectionGraph);
 
-        boolean hasUio = routes.stream()
-                .anyMatch(r -> Arrays.asList(r.getAirports()).contains("UIO"));
-        assertTrue(hasUio, "Expected a route via UIO using the overnight connection");
+        boolean hasLhrUioGye = routes.stream().anyMatch(r -> {
+            List<String> airports = Arrays.asList(r.getAirports());
+            int lhrIdx = airports.indexOf("LHR");
+            int uioIdx = airports.indexOf("UIO");
+            int gyeIdx = airports.indexOf("GYE");
+            return lhrIdx >= 0 && uioIdx == lhrIdx + 1 && gyeIdx == uioIdx + 1;
+        });
+        assertFalse(hasLhrUioGye, "A connection where outbound departs before inbound arrives should be rejected");
+    }
+
+    @Test
+    @DisplayName("searchByDateWithConnections rejects a connection where outbound departs at the exact same time as inbound arrives")
+    void connectionSearchRejectsZeroGapConnection() {
+        // uioGyeZeroGap departs 12:00; LHR→UIO arrives 12:00 → gap = 0 → invalid (not overnight, not > 2h)
+        MultiCitySearch mcs = new MultiCitySearch(null, connectionIndexWith(uioGyeZeroGap));
+        ArrayList<Route> routes = mcs.searchByDateWithConnections(
+                "JFK", new String[]{"LHR", "GYE"}, "price", connectionGraph);
+
+        // The LHR→UIO→GYE sequence specifically must not appear (zero gap)
+        boolean hasLhrUioGye = routes.stream().anyMatch(r -> {
+            List<String> airports = Arrays.asList(r.getAirports());
+            int lhrIdx = airports.indexOf("LHR");
+            int uioIdx = airports.indexOf("UIO");
+            int gyeIdx = airports.indexOf("GYE");
+            return lhrIdx >= 0 && uioIdx == lhrIdx + 1 && gyeIdx == uioIdx + 1;
+        });
+        assertFalse(hasLhrUioGye, "LHR→UIO→GYE with zero-gap connection should be rejected");
     }
 
     @Test
