@@ -401,9 +401,9 @@ class MultiCitySearchTest {
     }
 
     @Test
-    @DisplayName("searchByDateWithConnections rejects a connection where outbound departs before inbound arrives")
-    void connectionSearchRejectsOvernightConnection() {
-        // uioGyeNextDay departs 08:00; LHR→UIO arrives ~12:00 → gap = -4h → invalid (same-day rule only)
+    @DisplayName("searchByDateWithConnections accepts an overnight connection where outbound departs before inbound arrives")
+    void connectionSearchAcceptsOvernightConnection() {
+        // uioGyeNextDay departs 08:00; LHR→UIO arrives ~12:00 → gap = -4h → overnight valid
         MultiCitySearch mcs = new MultiCitySearch(null, connectionIndexWith(uioGyeNextDay));
         ArrayList<Route> routes = mcs.searchByDateWithConnections(
                 "JFK", new String[]{"LHR", "GYE"}, "price", connectionGraph);
@@ -415,7 +415,7 @@ class MultiCitySearchTest {
             int gyeIdx = airports.indexOf("GYE");
             return lhrIdx >= 0 && uioIdx == lhrIdx + 1 && gyeIdx == uioIdx + 1;
         });
-        assertFalse(hasLhrUioGye, "A connection where outbound departs before inbound arrives should be rejected");
+        assertTrue(hasLhrUioGye, "An overnight connection (outbound before inbound on same calendar day) should be accepted");
     }
 
     @Test

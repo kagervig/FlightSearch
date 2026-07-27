@@ -54,6 +54,9 @@ public class Server {
     private static AirportStore airportStore; // Provides airport lookup by code
     private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFKLAX")
 
+    // RateLimiter(maxRequests, windowMillis): multicity search is expensive, so 1 req/2 s per IP;
+    // airport search is lightweight but called on every keystroke, so 1 req/1 s; all other
+    // endpoints share a generous 3 req/60 s.
     private static final RateLimiter MULTICITY_LIMITER = new RateLimiter(1, 2_000);
     private static final RateLimiter AIRPORT_SEARCH_LIMITER = new RateLimiter(1, 1_000);
     private static final RateLimiter DEFAULT_LIMITER = new RateLimiter(3, 60_000);
@@ -135,14 +138,14 @@ public class Server {
 
         // Step 5: Start the server
         app.start(port);
-        System.out.println("Server started on port " + port);
-        System.out.println("Endpoints:");
-        System.out.println("  GET /health");
-        System.out.println("  GET /api/airports");
-        System.out.println("  GET /api/flights/search?from=XXX&to=YYY");
-        System.out.println("  GET /api/routes/cheapest?from=XXX");
-        System.out.println("  GET /api/flights/multicity?from=XXX&destinations=YYY,ZZZ");
-        System.out.println("  GET /api/airports/search?city=XXX");
+        // System.out.println("Server started on port " + port);
+        // System.out.println("Endpoints:");
+        // System.out.println("  GET /health");
+        // System.out.println("  GET /api/airports");
+        // System.out.println("  GET /api/flights/search?from=XXX&to=YYY");
+        // System.out.println("  GET /api/routes/cheapest?from=XXX");
+        // System.out.println("  GET /api/flights/multicity?from=XXX&destinations=YYY,ZZZ");
+        // System.out.println("  GET /api/airports/search?city=XXX");
     }
 
     /**
@@ -174,7 +177,7 @@ public class Server {
 
         FlightGraph.addFlightEdges(flightNetwork, flightIndex);
 
-        System.out.println("Loaded " + airports.length + " airports and " + flightList.size() + " flights");
+        // System.out.println("Loaded " + airports.length + " airports and " + flightList.size() + " flights");
     }
 
     /**
@@ -552,17 +555,17 @@ public class Server {
             optimizeBy = "price";
         }
 
-        System.out.println("[multicity] from=" + from + " destinations=" + Arrays.toString(destinations) + " optimizeBy=" + optimizeBy);
+        // System.out.println("[multicity] from=" + from + " destinations=" + Arrays.toString(destinations) + " optimizeBy=" + optimizeBy);
 
         MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, flightIndex);
         ArrayList<Route> validRoutes = multiCitySearch.search(from, destinations, optimizeBy);
-        System.out.println("[multicity] direct search: " + validRoutes.size() + " routes");
+        // System.out.println("[multicity] direct search: " + validRoutes.size() + " routes");
 
         // When no direct-flight routes exist, fall back to connection search via Dijkstra
         if (validRoutes.isEmpty()) {
             validRoutes = multiCitySearch.searchByDateWithConnections(
                     from, destinations, optimizeBy, flightNetwork);
-            System.out.println("[multicity] connection search: " + validRoutes.size() + " routes");
+            // System.out.println("[multicity] connection search: " + validRoutes.size() + " routes");
         }
 
         if (validRoutes.isEmpty()) {
@@ -605,25 +608,8 @@ public class Server {
                 leg.put("date", legDates[i].toString());
                 leg.put("isConnection", route.isConnectionLeg(i));
                 if (route.isConnectionLeg(i)) {
-                    int connectionMinutes = 0;
-                    boolean isOvernightConnection = false;
-                    if (i + 1 < allFlights.size()) {
-                        Flight cheapestInbound = allFlights.get(i).stream()
-                                .min(Comparator.comparingInt(Flight::getPrice)).orElse(null);
-                        Flight cheapestOutbound = allFlights.get(i + 1).stream()
-                                .min(Comparator.comparingInt(Flight::getPrice)).orElse(null);
-                        if (cheapestInbound != null && cheapestOutbound != null) {
-                            int arrivalMin = cheapestInbound.getArrivalTime().toSecondOfDay() / 60;
-                            int departureMin = cheapestOutbound.getDepartureTime().toSecondOfDay() / 60;
-                            connectionMinutes = departureMin - arrivalMin;
-                            if (connectionMinutes < 0) {
-                                connectionMinutes += 24 * 60;
-                                isOvernightConnection = true;
-                            }
-                        }
-                    }
-                    leg.put("connectionMinutes", connectionMinutes);
-                    leg.put("isOvernightConnection", isOvernightConnection);
+                    leg.put("connectionMinutes", route.computeConnectionMinutes(i));
+                    leg.put("isOvernightConnection", route.isOvernightConnectionLeg(i));
                 }
 
                 ArrayList<Flight> legFlights = allFlights.get(i);
