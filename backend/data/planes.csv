@@ -1,58 +1,79 @@
-Aerospatiale/Alenia ATR 42-500,AT5
-Aerospatiale/Alenia ATR 42-600,ATR
-Aerospatiale/Alenia ATR 72,AT7
-Airbus A310,310
-Airbus A318,318
-Airbus A319,319
-Airbus A320,320
-Airbus A321,321
-Airbus A330,330
-Airbus A330-200,332
-Airbus A330-300,333
-Airbus A340,340
-Airbus A340-200,342
-Airbus A340-300,343
-Airbus A340-500,345
-Airbus A340-600,346
-Airbus A380,380
-Airbus A380-800,388
-Antonov AN-24,AN4
-Avro RJ100,AR1
-Avro RJ85,AR8
-BAe 146,146
-Beechcraft 1900,BEH
-Boeing 737,737
-Boeing 737-200,732
-Boeing 737-300,733
-Boeing 737-400,734
-Boeing 737-500,735
-Boeing 737-600,736
-Boeing 737-700,73G
-Boeing 737-800,738
-Boeing 737-900,739
-Boeing 747,747
-Boeing 747-400,744
-Boeing 757,757
-Boeing 757-200,752
-Boeing 757-300,753
-Boeing 767,767
-Boeing 767-300,763
-Boeing 767-400,764
-Boeing 777,777
-Boeing 777-200,772
-Boeing 777-200LR,77L
-Boeing 777-300,773
-Boeing 777-300ER,77W
-Boeing 787,787
-Boeing 787-8,788
-Canadair Regional Jet 200,CR2
-Canadair Regional Jet 700,CR7
-Canadair Regional Jet 900,CR9
-Embraer 170,E70
-Embraer 175,E75
-Embraer 190,E90
-Embraer 195,E95
-Embraer EMB 120 Brasilia,EM2
-Embraer RJ140,ERD
-Embraer RJ145,ER4
-Fokker 50,F50
+iata_code,name
+AT5,Aerospatiale/Alenia ATR 42-500
+ATR,Aerospatiale/Alenia ATR 42-600
+AT7,Aerospatiale/Alenia ATR 72
+310,Airbus A310
+318,Airbus A318
+319,Airbus A319
+320,Airbus A320
+321,Airbus A321
+330,Airbus A330
+332,Airbus A330-200
+333,Airbus A330-300
+340,Airbus A340
+342,Airbus A340-200
+343,Airbus A340-300
+345,Airbus A340-500
+346,Airbus A340-600
+380,Airbus A380
+388,Airbus A380-800
+AN4,Antonov AN-24
+AR1,Avro RJ100
+AR8,Avro RJ85
+146,BAe 146
+BEH,Beechcraft 1900
+737,Boeing 737
+732,Boeing 737-200
+733,Boeing 737-300
+734,Boeing 737-400
+735,Boeing 737-500
+736,Boeing 737-600
+73G,Boeing 737-700
+738,Boeing 737-800
+739,Boeing 737-900
+747,Boeing 747
+744,Boeing 747-400
+757,Boeing 757
+752,Boeing 757-200
+753,Boeing 757-300
+767,Boeing 767
+763,Boeing 767-300
+764,Boeing 767-400
+777,Boeing 777
+772,Boeing 777-200
+77L,Boeing 777-200LR
+773,Boeing 777-300
+77W,Boeing 777-300ER
+787,Boeing 787
+788,Boeing 787-8
+CR2,Canadair Regional Jet 200
+CR7,Canadair Regional Jet 700
+CR9,Canadair Regional Jet 900
+E70,Embraer 170
+E75,Embraer 175
+E90,Embraer 190
+E95,Embraer 195
+EM2,Embraer EMB 120 Brasilia
+ERD,Embraer RJ140
+ER4,Embraer RJ145
+F50,Fokker 50
+220,Airbus A220
+32S,Airbus A320neo
+350,Airbus A350
+73M,Boeing 737 MAX 8
+AB3,Airbus A300B4-600
+BE1,Beechcraft 1900
+BEC,Beechcraft 1900C
+CNA,Cessna
+CRJ,Canadair Regional Jet
+DH8,de Havilland Canada Dash 8
+DHT,de Havilland Canada Twin Otter
+EMJ,Embraer E-Jet
+ERJ,Embraer Regional Jet
+IL9,Ilyushin IL-96
+JST,BAe Jetstream
+M80,McDonnell Douglas MD-80
+SF3,Saab 340
+SU1,Sukhoi Superjet 100
+T20,Tupolev Tu-204
+YK2,Yakovlev Yak-42

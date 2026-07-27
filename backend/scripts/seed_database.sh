@@ -58,20 +58,18 @@ psql "$CONN" -c "\copy airlines (airline_code, airline_name, country) FROM '$DAT
 echo "Loading flights..."
 psql "$CONN" << SQL
 CREATE TABLE flights_staging (
-    flight_date    DATE,
     airline_code   VARCHAR(3),
     origin         CHAR(3),
     destination    CHAR(3),
-    stops          SMALLINT,
     aircraft_type  VARCHAR(4),
     flight_number  VARCHAR(8),
     departure_time TIME,
     ticket_price   NUMERIC(8,2)
 );
 \copy flights_staging FROM '$DATA_DIR/flights.csv' CSV HEADER NULL AS ''
-INSERT INTO flights (flight_date, airline_code, origin, destination, stops,
+INSERT INTO flights (airline_code, origin, destination,
                      aircraft_type, flight_number, departure_time, ticket_price)
-    SELECT flight_date, airline_code, origin, destination, stops,
+    SELECT airline_code, origin, destination,
            aircraft_type, flight_number, departure_time, ticket_price
     FROM flights_staging
     WHERE airline_code   IN (SELECT airline_code FROM airlines)

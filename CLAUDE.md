@@ -17,7 +17,7 @@ Backend:
 
 - Java 17, Javalin 6, Maven
 - PostgreSQL, HikariCP
-- Render hosting
+- Railway hosting
 
 ### Structure
 
@@ -64,7 +64,7 @@ frontend:
 ### Available tools:
 
 - psql
-- render
+- railway
 - vercel
 
 ### Decisions & learnings:
