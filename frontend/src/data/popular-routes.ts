@@ -11,6 +11,26 @@ export interface PopularRoute {
 
 export const POPULAR_ROUTES: PopularRoute[] = [
   {
+    title: "European Excursion",
+    values: {
+      homeAirport: { code: "LGW", city: "London" },
+      destinations: [
+        { code: "CDG", city: "Paris", days: 3 },
+        { code: "FCO", city: "Rome", days: 3 },
+        { code: "BUD", city: "Budapest", days: 3 },
+        { code: "IBZ", city: "Ibiza", days: 3 },
+      ],
+      optimizeBy: "price",
+    },
+    coords: {
+      LGW: { lat: 51.1537, lng: -0.1821 },
+      CDG: { lat: 49.0097, lng: 2.5479 },
+      FCO: { lat: 41.7999, lng: 12.2462 },
+      BUD: { lat: 47.4298, lng: 19.2611 },
+      IBZ: { lat: 38.8729, lng: 1.3733 },
+    },
+  },
+  {
     title: "Snowbird Sortie",
     values: {
       homeAirport: { code: "YYZ", city: "Toronto" },
@@ -46,26 +66,6 @@ export const POPULAR_ROUTES: PopularRoute[] = [
       DPS: { lat: -8.7482, lng: 115.1670 },
       HKG: { lat: 22.3080, lng: 113.9185 },
       CEB: { lat: 10.3075, lng: 123.9791 },
-    },
-  },
-  {
-    title: "European Excursion",
-    values: {
-      homeAirport: { code: "LGW", city: "London" },
-      destinations: [
-        { code: "CDG", city: "Paris", days: 3 },
-        { code: "FCO", city: "Rome", days: 3 },
-        { code: "BUD", city: "Budapest", days: 3 },
-        { code: "IBZ", city: "Ibiza", days: 3 },
-      ],
-      optimizeBy: "price",
-    },
-    coords: {
-      LGW: { lat: 51.1537, lng: -0.1821 },
-      CDG: { lat: 49.0097, lng: 2.5479 },
-      FCO: { lat: 41.7999, lng: 12.2462 },
-      BUD: { lat: 47.4298, lng: 19.2611 },
-      IBZ: { lat: 38.8729, lng: 1.3733 },
     },
   },
 ];

@@ -94,10 +94,10 @@ function RouteCard({ route }: { route: PopularRoute }) {
 
 export function PopularRoutes() {
   return (
-    <section className="py-16" style={{ background: "var(--background)" }}>
+    <section className="pt-1 pb-16" style={{ background: "var(--background)" }}>
       <div className="max-w-6xl mx-auto px-6">
         <h2
-          className="text-3xl font-semibold text-center mb-10"
+          className="text-3xl font-semibold text-center mb-6"
           style={{ fontFamily: "var(--font-display)", color: "var(--foreground)" }}
         >
           Popular routes

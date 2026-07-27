@@ -144,7 +144,11 @@ export function FlightSearchForm({ onSearch, isDisabled, isLoading, defaultValue
           {/* Right column */}
           <div className="col-span-2">
             <div className="space-y-1.5">
-              <label className="text-sm font-semibold text-foreground">Destinations</label>
+              <div className="flex items-center gap-2">
+                <span className="flex-1 text-sm font-semibold text-foreground">Destinations</span>
+                <span className="w-[96px] text-center text-sm font-semibold text-foreground">Days</span>
+                <span className="w-7" aria-hidden="true" />
+              </div>
 
               <div className="space-y-2">
                 <AnimatePresence initial={false}>

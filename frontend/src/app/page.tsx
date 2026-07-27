@@ -202,8 +202,8 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Zone 1 — full-screen hero */}
-      <section id="hero" className="relative min-h-screen flex flex-col">
+      {/* Zone 1 — hero */}
+      <section id="hero" className="relative min-h-[65vh] flex flex-col">
 
         {/* Light mode photo: airy teal sky with clouds */}
         <img
@@ -231,10 +231,10 @@ export default function Home() {
         />
 
         {/* Hero content */}
-        <div className="relative z-10 flex flex-col items-center justify-center flex-1 px-6 pt-24 pb-16 text-center">
+        <div className="relative z-10 flex flex-col items-center justify-center flex-1 px-6 pt-14 pb-4 md:pt-20 text-center">
 
           {/* Brand lockup above the headline */}
-          <div className="flex items-center gap-3 mb-8">
+          <div className="flex items-center gap-3 mb-4">
             <Plane className="w-8 h-8 text-white" style={{ opacity: 0.9 }} />
             <span
               className="text-2xl font-bold text-white tracking-wide"
@@ -245,16 +245,16 @@ export default function Home() {
           </div>
 
           <h1
-            className="text-5xl md:text-6xl lg:text-7xl font-bold text-white mb-5 leading-tight"
+            className="text-5xl md:text-6xl lg:text-7xl font-bold text-white mb-3 leading-tight"
             style={{ fontFamily: "var(--font-display)", textShadow: "0 2px 20px rgba(0,0,0,0.5)" }}
           >
             Multi-city travel,<br />finally solved.
           </h1>
           <p
-            className="text-lg md:text-xl max-w-2xl mb-10 leading-relaxed"
+            className="hidden md:block text-lg md:text-xl max-w-2xl mb-6 leading-relaxed"
             style={{ color: "rgba(255,255,255,0.80)", textShadow: "0 1px 8px rgba(0,0,0,0.4)" }}
           >
-            Add your cities. We&apos;ll find the optimal route — not just the cheapest individual
+            Add your cities. We&apos;ll find the optimal route, not just the cheapest individual
             flights, but the smartest way to connect them all.
           </p>
 
