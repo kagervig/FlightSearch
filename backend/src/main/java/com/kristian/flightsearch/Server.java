@@ -52,6 +52,7 @@ public class Server {
     // This is efficient because we don't reload data for every request
     private static FlightGraph flightNetwork; // Graph structure: airports connected by flights
     private static AirportStore airportStore; // Provides airport lookup by code
+    private static FlightStore flightStore;   // Provides direct DB queries (e.g., board data)
     private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFKLAX")
 
     // RateLimiter(maxRequests, windowMillis): multicity search is expensive, so 1 req/2 s per IP;
@@ -136,6 +137,10 @@ public class Server {
         // Used to render the full network on the Route Map page
         app.get("/api/graph/connections", Server::getGraphConnections);
 
+        // Departures and arrivals board for a given airport
+        // Example: /api/flights/board?airport=LHR
+        app.get("/api/flights/board", Server::getBoardFlights);
+
         // Step 5: Start the server
         app.start(port);
         // System.out.println("Server started on port " + port);
@@ -170,7 +175,7 @@ public class Server {
 
         flightNetwork = FlightGraph.initalizeFlightGraph(airports);
 
-        FlightStore flightStore = new FlightStore(DatabaseManager.getDataSource(), airportStore);
+        flightStore = new FlightStore(DatabaseManager.getDataSource(), airportStore);
         HashMap<String, Flight> flightList = flightStore.readFlights();
 
         flightIndex = FlightGenerator.flightMapper(flightList);
@@ -654,5 +659,31 @@ public class Server {
         }
 
         ctx.json(Map.of("from", from, "routes", routeData));
+    }
+
+    /**
+     * GET /api/flights/board?airport=XXX
+     * Returns all departures and arrivals for the given airport.
+     */
+    private static void getBoardFlights(Context ctx) {
+        String airport = ctx.queryParam("airport");
+
+        if (airport == null || airport.isBlank()) {
+            ctx.status(400).json(Map.of("error", "Missing 'airport' parameter"));
+            return;
+        }
+
+        airport = airport.trim().toUpperCase();
+
+        if (!airportStore.isValidAirportCode(airport)) {
+            ctx.status(400).json(Map.of("error", "Airport not supported: " + airport));
+            return;
+        }
+
+        var board = flightStore.readFlightsForBoard(airport);
+        ctx.json(Map.of(
+                "airport", airport,
+                "departures", board.get("departures"),
+                "arrivals", board.get("arrivals")));
     }
 }
