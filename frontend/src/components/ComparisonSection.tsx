@@ -17,7 +17,7 @@ const ROWS = [
   {
     feature: "Route optimization",
     others: "None",
-    ch: "Cost, time, or stops",
+    ch: "Lowest cost or fastest route",
   },
   {
     feature: "Combinations considered",
