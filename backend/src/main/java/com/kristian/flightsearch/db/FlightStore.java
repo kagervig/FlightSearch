@@ -102,8 +102,12 @@ public class FlightStore {
         row.put("aircraftName", rs.getString("aircraft_name"));
         row.put("origin", origin.getCode());
         row.put("originCity", origin.getCity());
+        row.put("originLat", origin.getLat());
+        row.put("originLon", origin.getLon());
         row.put("destination", destination.getCode());
         row.put("destinationCity", destination.getCity());
+        row.put("destinationLat", destination.getLat());
+        row.put("destinationLon", destination.getLon());
         row.put("departureTime", String.format("%02d:%02d", departure.getHour(), departure.getMinute()));
         row.put("arrivalTime", String.format("%02d:%02d", arrival.getHour(), arrival.getMinute()));
         row.put("durationMinutes", duration.toMinutes());
