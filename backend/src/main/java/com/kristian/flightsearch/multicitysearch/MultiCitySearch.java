@@ -8,16 +8,19 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.PriorityQueue;
 import java.util.Set;
 
 import com.kristian.flightsearch.db.AirportStore;
 import com.kristian.flightsearch.db.DatabaseManager;
 import com.kristian.flightsearch.flightgraph.AirportVertex;
 import com.kristian.flightsearch.flightgraph.Dijkstra;
+import com.kristian.flightsearch.flightgraph.Edge;
 import com.kristian.flightsearch.flightgraph.FlightGraph;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
@@ -167,12 +170,33 @@ public class MultiCitySearch {
             validRoutes.add(new Route(perm, routeFlights));
         }
 
-        if ("duration".equalsIgnoreCase(optimizeBy)) {
-            validRoutes.sort((a, b) -> Long.compare(a.getShortestTotalDurationMinutes(), b.getShortestTotalDurationMinutes()));
-        } else {
-            validRoutes.sort((a, b) -> Integer.compare(a.getCheapestTotalPrice(), b.getCheapestTotalPrice()));
-        }
+        sortRoutes(validRoutes, optimizeBy);
         return validRoutes;
+    }
+
+    private static void sortRoutes(ArrayList<Route> routes, String optimizeBy) {
+        if ("duration".equalsIgnoreCase(optimizeBy)) {
+            routes.sort((a, b) -> Long.compare(a.getShortestTotalDurationMinutes(), b.getShortestTotalDurationMinutes()));
+        } else {
+            routes.sort((a, b) -> Integer.compare(a.getCheapestTotalPrice(), b.getCheapestTotalPrice()));
+        }
+    }
+
+    /**
+     * Runs the direct search and the connection search and merges the results, so
+     * permutations that need a connection still appear alongside permutations that
+     * have direct flights on every leg.
+     */
+    public ArrayList<Route> searchAllRoutes(String homeAirport, String[] destinations,
+            String optimizeBy, FlightGraph flightGraph) {
+        ArrayList<Route> routes = search(homeAirport, destinations, optimizeBy);
+        ArrayList<Route> connectionRoutes = searchByDateWithConnections(homeAirport, destinations, optimizeBy, flightGraph);
+        // Fully direct permutations are already covered by search(); keeping only
+        // routes that use a connection avoids duplicates.
+        connectionRoutes.removeIf(r -> !r.hasConnections());
+        routes.addAll(connectionRoutes);
+        sortRoutes(routes, optimizeBy);
+        return routes;
     }
 
     // -------------------------------------------------------------------------
@@ -246,32 +270,63 @@ public class MultiCitySearch {
         return result;
     }
 
-    // Finds the cheapest connecting path from origin to dest via Dijkstra.
+    // A candidate path endpoint during the fewest-stops search: how many flight
+    // legs (hops) and how much money it took to reach this vertex.
+    private record PathState(AirportVertex vertex, int hops, int price) {}
+
+    // Finds the connecting path with the fewest stops from origin to dest, breaking
+    // ties by cheapest total price. Pure cheapest-path search is wrong here: it can
+    // pick a cheap many-stop path and reject the leg on the hop limit even though a
+    // within-limit path exists.
     // Returns null if unreachable or if more than MAX_CONNECTIONS_PER_LEG intermediate
     // airports are required.
-    @SuppressWarnings("unchecked")
     private ArrayList<String> findConnectingPath(String origin, String dest, FlightGraph flightGraph) {
         AirportVertex originVertex = flightGraph.getVertex(origin);
         AirportVertex destVertex = flightGraph.getVertex(dest);
         if (originVertex == null || destVertex == null) return null;
 
-        Map[] dijkstraResult = Dijkstra.searchByPrice(flightGraph, originVertex);
-        Map<Airport, Integer> prices = (Map<Airport, Integer>) dijkstraResult[0];
-        Map<Airport, AirportVertex> previous = (Map<Airport, AirportVertex>) dijkstraResult[1];
+        Map<String, Integer> bestHops = new HashMap<>();
+        Map<String, Integer> bestPrice = new HashMap<>();
+        Map<String, String> previous = new HashMap<>();
+        PriorityQueue<PathState> queue = new PriorityQueue<>(
+                Comparator.comparingInt(PathState::hops).thenComparingInt(PathState::price));
 
-        Integer priceToDestination = prices.get(destVertex.getData());
-        if (priceToDestination == null || priceToDestination == Integer.MAX_VALUE) return null;
+        bestHops.put(origin, 0);
+        bestPrice.put(origin, 0);
+        queue.add(new PathState(originVertex, 0, 0));
 
-        ArrayList<String> path = new ArrayList<>();
-        Airport current = destVertex.getData();
-        while (current != null) {
-            path.add(0, current.getCode());
-            AirportVertex prevVertex = previous.get(current);
-            current = (prevVertex != null) ? prevVertex.getData() : null;
+        while (!queue.isEmpty()) {
+            PathState current = queue.poll();
+            String currentCode = current.vertex().getData().getCode();
+            if (currentCode.equals(dest)) break;
+            // Skip stale queue entries superseded by a better path to this vertex
+            if (current.hops() != bestHops.get(currentCode)
+                    || current.price() != bestPrice.get(currentCode)) continue;
+            // A path with k intermediates has k + 1 edges, so stop expanding once
+            // another hop would exceed the intermediate limit.
+            if (current.hops() > MAX_CONNECTIONS_PER_LEG) continue;
+
+            for (Edge e : current.vertex().getEdges()) {
+                String next = e.getEnd().getData().getCode();
+                int nextHops = current.hops() + 1;
+                int nextPrice = current.price() + e.getPrice();
+                Integer knownHops = bestHops.get(next);
+                if (knownHops == null || nextHops < knownHops
+                        || (nextHops == knownHops && nextPrice < bestPrice.get(next))) {
+                    bestHops.put(next, nextHops);
+                    bestPrice.put(next, nextPrice);
+                    previous.put(next, currentCode);
+                    queue.add(new PathState(e.getEnd(), nextHops, nextPrice));
+                }
+            }
         }
 
-        // path.size() - 2 = number of intermediate airports
-        if (path.size() - 2 > MAX_CONNECTIONS_PER_LEG) return null;
+        if (!bestHops.containsKey(dest)) return null;
+
+        ArrayList<String> path = new ArrayList<>();
+        for (String code = dest; code != null; code = previous.get(code)) {
+            path.add(0, code);
+        }
         return path;
     }
 
@@ -378,13 +433,7 @@ public class MultiCitySearch {
             }
         }
 
-        if ("duration".equalsIgnoreCase(optimizeBy)) {
-            validRoutes.sort((a, b) ->
-                    Long.compare(a.getShortestTotalDurationMinutes(), b.getShortestTotalDurationMinutes()));
-        } else {
-            validRoutes.sort((a, b) ->
-                    Integer.compare(a.getCheapestTotalPrice(), b.getCheapestTotalPrice()));
-        }
+        sortRoutes(validRoutes, optimizeBy);
         return validRoutes;
     }
 
@@ -419,7 +468,7 @@ public class MultiCitySearch {
     }
 
     public static Route findCheapestRoute(ArrayList<Route> validRoutes) {
-        Route cheapestRoute = validRoutes.get(1);
+        Route cheapestRoute = validRoutes.get(0);
         for (Route r : validRoutes) {
             if (r.getCheapestTotalPrice() < cheapestRoute.getCheapestTotalPrice()) {
                 cheapestRoute = r;

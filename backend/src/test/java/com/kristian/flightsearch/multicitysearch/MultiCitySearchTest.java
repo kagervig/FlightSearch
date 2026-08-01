@@ -466,6 +466,124 @@ class MultiCitySearchTest {
     }
 
     @Test
+    @DisplayName("findCheapestRoute returns the route when only one exists")
+    void findCheapestRouteReturnsRouteWhenOnlyOneExists() {
+        ArrayList<ArrayList<Flight>> legOptions = new ArrayList<>();
+        legOptions.add(flightIndex.get("JFKLHR"));
+        legOptions.add(flightIndex.get("LHRJFK"));
+        ArrayList<Route> routes = new ArrayList<>();
+        routes.add(new Route(new String[]{"JFK", "LHR", "JFK"}, legOptions));
+
+        assertSame(routes.get(0), MultiCitySearch.findCheapestRoute(routes));
+    }
+
+    // -----------------------------------------------------------------------
+    // Fewest-stops connection path
+    //
+    // JFK→GYE has no direct flight. Two connecting paths exist:
+    //   Cheap chain: JFK→ATL→MIA→PTY→GYE ($10/leg — 3 intermediates, over the limit)
+    //   Hub path:    JFK→UIO→GYE ($500/leg — 1 intermediate, within the limit)
+    // The search must find the hub path even though the chain is cheaper.
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("searchByDateWithConnections finds a within-limit path when the cheapest path has too many stops")
+    void connectionSearchFindsWithinLimitPathWhenCheapestPathHasTooManyStops() {
+        Airport atl = new Airport("ATL", "Hartsfield-Jackson Atlanta International", 33.6404, -84.4199, 3962, 313, "Atlanta", "United States");
+        Airport mia = new Airport("MIA", "Miami International", 25.7932, -80.2906, 13016, 8, "Miami", "United States");
+        Airport pty = new Airport("PTY", "Tocumen International", 9.0714, -79.3835, 10006, 135, "Panama City", "Panama");
+
+        Flight jfkUio = new Flight(jfk, uio, LHR_UIO_DISTANCE_KM, LocalTime.of(8, 0), "AV8000");
+        jfkUio.setPrice(500);
+        // departs 15:00 — well after JFK→UIO arrives ~10:00, valid connection gap
+        Flight uioGye = new Flight(uio, gye, UIO_GYE_DISTANCE_KM, LocalTime.of(15, 0), "AV8001");
+        uioGye.setPrice(500);
+        Flight gyeJfk = new Flight(gye, jfk, 4700.0, LocalTime.of(10, 0), "UA9998");
+        gyeJfk.setPrice(300);
+
+        Flight jfkAtl = new Flight(jfk, atl, 1200.0, LocalTime.of(7, 0), "DL100");
+        jfkAtl.setPrice(10);
+        Flight atlMia = new Flight(atl, mia, 960.0, LocalTime.of(9, 0), "DL101");
+        atlMia.setPrice(10);
+        Flight miaPty = new Flight(mia, pty, 1660.0, LocalTime.of(11, 0), "CM102");
+        miaPty.setPrice(10);
+        Flight ptyGye = new Flight(pty, gye, 1100.0, LocalTime.of(15, 0), "CM103");
+        ptyGye.setPrice(10);
+
+        HashMap<String, ArrayList<Flight>> index = new HashMap<>();
+        index.put("JFKUIO", new ArrayList<>(List.of(jfkUio)));
+        index.put("UIOGYE", new ArrayList<>(List.of(uioGye)));
+        index.put("GYEJFK", new ArrayList<>(List.of(gyeJfk)));
+        index.put("JFKATL", new ArrayList<>(List.of(jfkAtl)));
+        index.put("ATLMIA", new ArrayList<>(List.of(atlMia)));
+        index.put("MIAPTY", new ArrayList<>(List.of(miaPty)));
+        index.put("PTYGYE", new ArrayList<>(List.of(ptyGye)));
+
+        FlightGraph graph = new FlightGraph(true, true);
+        graph.addVertex(jfk);
+        graph.addVertex(uio);
+        graph.addVertex(gye);
+        graph.addVertex(atl);
+        graph.addVertex(mia);
+        graph.addVertex(pty);
+        for (ArrayList<Flight> flights : index.values()) {
+            for (Flight f : flights) {
+                graph.addEdge(graph.getVertex(f.getOrigin().getCode()),
+                        graph.getVertex(f.getDestination().getCode()),
+                        f.getPrice(), f.getDuration(), f.getFlightNumber());
+            }
+        }
+
+        MultiCitySearch mcs = new MultiCitySearch(null, index);
+        ArrayList<Route> routes = mcs.searchByDateWithConnections(
+                "JFK", new String[]{"GYE"}, "price", graph);
+
+        assertFalse(routes.isEmpty(), "Expected a route via the within-limit UIO path");
+        boolean hasUio = routes.stream()
+                .anyMatch(r -> Arrays.asList(r.getAirports()).contains("UIO"));
+        assertTrue(hasUio, "Expected the connection to route via UIO, not the cheaper 3-stop chain");
+    }
+
+    @Test
+    @DisplayName("searchAllRoutes includes connection permutations when another permutation is fully direct")
+    void searchAllRoutesIncludesConnectionPermutationsAlongsideDirectRoutes() {
+        Airport ams = new Airport("AMS", "Amsterdam Schiphol", 52.3105, 4.7683, 12467, -11, "Amsterdam", "Netherlands");
+
+        // CDG→AMS arrives ~09:52; AMS→LHR departs 14:00 — valid connection gap
+        Flight cdgAms = new Flight(cdg, ams, 400.0, LocalTime.of(9, 0), "KL2000");
+        Flight amsLhr = new Flight(ams, lhr, 371.0, LocalTime.of(14, 0), "KL2001");
+
+        HashMap<String, ArrayList<Flight>> index = new HashMap<>(flightIndex);
+        index.remove("CDGLHR"); // forces the JFK→CDG→LHR→JFK permutation through a connection
+        index.put("CDGAMS", new ArrayList<>(List.of(cdgAms)));
+        index.put("AMSLHR", new ArrayList<>(List.of(amsLhr)));
+
+        FlightGraph graph = new FlightGraph(true, true);
+        graph.addVertex(jfk);
+        graph.addVertex(lhr);
+        graph.addVertex(cdg);
+        graph.addVertex(ams);
+        for (ArrayList<Flight> flights : index.values()) {
+            for (Flight f : flights) {
+                graph.addEdge(graph.getVertex(f.getOrigin().getCode()),
+                        graph.getVertex(f.getDestination().getCode()),
+                        f.getPrice(), f.getDuration(), f.getFlightNumber());
+            }
+        }
+
+        MultiCitySearch mcs = new MultiCitySearch(null, index);
+        ArrayList<Route> routes = mcs.searchAllRoutes("JFK", new String[]{"LHR", "CDG"}, "price", graph);
+
+        assertEquals(2, routes.size(), "Expected the direct permutation plus the connection permutation, no duplicates");
+        boolean hasDirect = routes.stream().anyMatch(r ->
+                Arrays.equals(r.getAirports(), new String[]{"JFK", "LHR", "CDG", "JFK"}) && !r.hasConnections());
+        boolean hasConnection = routes.stream().anyMatch(r ->
+                Arrays.asList(r.getAirports()).contains("AMS") && r.hasConnections());
+        assertTrue(hasDirect, "Expected the fully direct JFK→LHR→CDG→JFK route");
+        assertTrue(hasConnection, "Expected the JFK→CDG→AMS→LHR→JFK connection route");
+    }
+
+    @Test
     @DisplayName("searchByDateWithConnections stores intended airports without connection airports")
     void connectionSearchStoresIntendedAirports() {
         MultiCitySearch mcs = new MultiCitySearch(null, connectionFlightIndex);

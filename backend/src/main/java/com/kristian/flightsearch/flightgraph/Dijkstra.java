@@ -1,7 +1,6 @@
 package com.kristian.flightsearch.flightgraph;
 
 import java.time.Duration;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.PriorityQueue;
@@ -109,9 +108,10 @@ public class Dijkstra {
         Map<Airport, Duration> flightDurations = new HashMap<>();
         Map<Airport, AirportVertex> previous = new HashMap<>();
 
-        PriorityQueue<QueueObject> queue = new PriorityQueue<>(
-            Comparator.comparing(q -> (Duration) flightDurations.get(q.vertex.getData()))
-        );
+        // Priority is the duration in minutes, stored on the queue entry itself so
+        // heap order stays valid when flightDurations is updated later — a comparator
+        // reading the map would silently break the heap invariant on updates.
+        PriorityQueue<QueueObject> queue = new PriorityQueue<>();
 
         for (AirportVertex v : g.getVertices()){
             if (v != startingVertex){
@@ -122,7 +122,7 @@ public class Dijkstra {
 
         flightDurations.put(startingVertex.getData(), Duration.ZERO);
 
-        queue.add(new QueueObject(startingVertex, 0)); // The int is ignored in this context
+        queue.add(new QueueObject(startingVertex, 0));
 
         while (!queue.isEmpty()){
             AirportVertex current = queue.poll().vertex;
@@ -133,7 +133,7 @@ public class Dijkstra {
                 if (alternativeDuration.compareTo(flightDurations.get(neighbourValue)) < 0){
                     flightDurations.put(neighbourValue, alternativeDuration);
                     previous.put(neighbourValue, current);
-                    queue.add(new QueueObject(e.getEnd(), 0)); // The int is ignored
+                    queue.add(new QueueObject(e.getEnd(), (int) alternativeDuration.toMinutes()));
                 }
             }
         }

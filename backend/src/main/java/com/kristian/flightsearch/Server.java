@@ -341,8 +341,8 @@ public class Server {
         }
 
         // Look up flights using our index (O(1) lookup)
-        // The key format is "ORIGIN-DESTINATION" (e.g., "JFK-LAX")
-        String routeKey = from + "-" + to;
+        // The key format is "ORIGINDESTINATION" (e.g., "JFKLAX")
+        String routeKey = from + to;
         ArrayList<Flight> flights = flightIndex.get(routeKey);
 
         // Handle case where no direct flights exist
@@ -558,15 +558,10 @@ public class Server {
         // System.out.println("[multicity] from=" + from + " destinations=" + Arrays.toString(destinations) + " optimizeBy=" + optimizeBy);
 
         MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, flightIndex);
-        ArrayList<Route> validRoutes = multiCitySearch.search(from, destinations, optimizeBy);
-        // System.out.println("[multicity] direct search: " + validRoutes.size() + " routes");
-
-        // When no direct-flight routes exist, fall back to connection search via Dijkstra
-        if (validRoutes.isEmpty()) {
-            validRoutes = multiCitySearch.searchByDateWithConnections(
-                    from, destinations, optimizeBy, flightNetwork);
-            // System.out.println("[multicity] connection search: " + validRoutes.size() + " routes");
-        }
+        // Merges direct-flight permutations with permutations that need a connection,
+        // so one fully direct ordering doesn't hide the others.
+        ArrayList<Route> validRoutes = multiCitySearch.searchAllRoutes(
+                from, destinations, optimizeBy, flightNetwork);
 
         if (validRoutes.isEmpty()) {
             ctx.json(Map.of("from", from, "routes", new ArrayList<>()));
