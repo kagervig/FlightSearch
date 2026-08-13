@@ -24,7 +24,6 @@ import { ProblemSection } from "@/components/ProblemSection";
 import { HowItWorksSection } from "@/components/HowItWorksSection";
 import { ComparisonSection } from "@/components/ComparisonSection";
 import { FinalCTASection } from "@/components/FinalCTASection";
-import { PopularRoutes } from "@/components/PopularRoutes";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
@@ -299,7 +298,6 @@ export function HomeContent() {
       {/* Zone 2 — trust-building content, shown only before any search */}
       {!hasSearchState && (
         <>
-          <PopularRoutes />
           <HowItWorksSection />
           <ProblemSection />
           <ComparisonSection />
