@@ -10,8 +10,12 @@ export interface BoardFlight {
   aircraftName: string;
   origin: string;
   originCity: string;
+  originLat: number;
+  originLon: number;
   destination: string;
   destinationCity: string;
+  destinationLat: number;
+  destinationLon: number;
   departureTime: string;
   arrivalTime: string;
   durationMinutes: number;
@@ -20,6 +24,8 @@ export interface BoardFlight {
 
 export interface BoardResponse {
   airport: string;
+  hubLat: number;
+  hubLon: number;
   departures: BoardFlight[];
   arrivals: BoardFlight[];
 }
