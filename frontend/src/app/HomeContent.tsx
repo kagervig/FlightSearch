@@ -114,6 +114,7 @@ export function HomeContent() {
   const [hasScrolled, setHasScrolled] = useState(false);
   const [formDefaults, setFormDefaults] = useState<SearchFormValues | undefined>(undefined);
   const [formKey, setFormKey] = useState(0);
+  const [isAnimatingOut, setIsAnimatingOut] = useState(false);
   const resultsRef = useRef<HTMLDivElement>(null);
 
   const { mutate, data, isPending, error, reset } = useMutation<
@@ -171,6 +172,15 @@ export function HomeContent() {
     setSortBy(values.optimizeBy === "duration" ? "duration" : "price");
     mutate(values);
     router.push(buildSearchUrl(values));
+  }
+
+  function handleClear() {
+    setIsAnimatingOut(true);
+    reset();
+    setFormDefaults(undefined);
+    setFormKey((k) => k + 1);
+    window.history.replaceState({}, "", "/");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   const routes = data ? sortedRoutes(data.routes, sortBy) : [];
@@ -297,19 +307,33 @@ export function HomeContent() {
       </section>
 
       {/* Zone 2 — trust-building content, shown only before any search */}
-      {!hasSearchState && (
-        <>
+      {!hasSearchState && !isAnimatingOut && (
+        <motion.div
+          key="zone2"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5 }}
+        >
           <PopularRoutes />
           <HowItWorksSection />
           <ProblemSection />
           <ComparisonSection />
           <FinalCTASection />
-        </>
+        </motion.div>
       )}
 
       {/* Results — shown after a search is triggered */}
-      {hasSearchState && (
-        <div ref={resultsRef} className="flex-1 max-w-4xl mx-auto w-full px-6 py-10">
+      <AnimatePresence onExitComplete={() => setIsAnimatingOut(false)}>
+        {hasSearchState && (
+        <motion.div
+          key="results-section"
+          ref={resultsRef}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0, y: 24 }}
+          transition={{ duration: 0.5, ease: "easeInOut" }}
+          className="flex-1 max-w-4xl mx-auto w-full px-6 py-10"
+        >
           <div className="flex flex-col gap-6">
             <AnimatePresence mode="wait">
 
@@ -369,6 +393,7 @@ export function HomeContent() {
                         resultCount={routes.length}
                         sortBy={sortBy}
                         onSortChange={setSortBy}
+                        onClear={handleClear}
                       />
 
                       {routes.map((route, index) => (
@@ -386,8 +411,9 @@ export function HomeContent() {
 
             </AnimatePresence>
           </div>
-        </div>
-      )}
+        </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Footer */}
       <footer
