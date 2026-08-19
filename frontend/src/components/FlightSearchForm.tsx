@@ -42,9 +42,11 @@ interface FlightSearchFormProps {
   isDisabled: boolean;
   /** Shows the loading spinner after a delay; true only when the backend is slow. */
   isLoading: boolean;
+  /** Pre-fills the form; pass a React key change alongside this to remount with new values. */
+  defaultValues?: SearchFormValues;
 }
 
-export function FlightSearchForm({ onSearch, isDisabled, isLoading }: FlightSearchFormProps) {
+export function FlightSearchForm({ onSearch, isDisabled, isLoading, defaultValues }: FlightSearchFormProps) {
   const today = new Date().toISOString().split("T")[0];
   const dateInputRef = useRef<HTMLInputElement>(null);
 
@@ -54,7 +56,7 @@ export function FlightSearchForm({ onSearch, isDisabled, isLoading }: FlightSear
     formState: { errors },
   } = useForm<SearchFormValues>({
     resolver: zodResolver(schema),
-    defaultValues: {
+    defaultValues: defaultValues ?? {
       homeAirport: { code: "", city: "" },
       destinations: [{ code: "", city: "", days: 3 }],
       departureDate: today,
@@ -142,7 +144,11 @@ export function FlightSearchForm({ onSearch, isDisabled, isLoading }: FlightSear
           {/* Right column */}
           <div className="col-span-2">
             <div className="space-y-1.5">
-              <label className="text-sm font-semibold text-foreground">Destinations</label>
+              <div className="flex items-center gap-2">
+                <span className="flex-1 text-sm font-semibold text-foreground">Destinations</span>
+                <span className="w-[96px] text-center text-sm font-semibold text-foreground">Days</span>
+                <span className="w-7" aria-hidden="true" />
+              </div>
 
               <div className="space-y-2">
                 <AnimatePresence initial={false}>

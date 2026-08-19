@@ -25,6 +25,8 @@ interface RouteMapProps {
   mapHeight?: number;
   /** Show the "The CityHopper Way" heading above the map (default: false) */
   showHeading?: boolean;
+  /** Disable zoom/pan and hide the reset button — for use as a static thumbnail (default: true) */
+  interactive?: boolean;
 }
 
 // Module-level cache so world data is fetched only once per page session
@@ -39,7 +41,7 @@ async function getWorldData(): Promise<unknown> {
   return worldDataCache;
 }
 
-export function RouteMap({ journey, airports, mapHeight, showHeading = false }: RouteMapProps) {
+export function RouteMap({ journey, airports, mapHeight, showHeading = false, interactive = true }: RouteMapProps) {
   const uid = useId().replace(/:/g, "");
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -48,18 +50,31 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false }: 
   const initialTransformRef = useRef<ZoomTransform | null>(null);
   // Cached d3 module reference so the reset handler doesn't need a dynamic import
   const d3Ref = useRef<typeof import("d3") | null>(null);
+  // Tracks the journey key that has already been animated so that re-draws
+  // triggered by reference-unstable props (new array on every render) don't
+  // replay the animation; a genuinely different journey resets the key.
+  const hasAnimated = useRef<string | null>(null);
 
-  // Keep containerWidth in sync with the parent container's actual width
+  // Keep containerWidth in sync with the parent container's actual width.
+  // Static maps read clientWidth once after mount — no observer needed and no
+  // risk of a second ResizeObserver fire (caused by the SVG setting its own
+  // height) triggering a duplicate draw and replaying the animation.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+
+    if (!interactive) {
+      setContainerWidth(el.clientWidth);
+      return;
+    }
+
     const obs = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect.width;
       if (w) setContainerWidth(Math.floor(w));
     });
     obs.observe(el);
     return () => obs.disconnect();
-  }, []);
+  }, [interactive]);
 
   useEffect(() => {
     if (!svgRef.current || containerWidth === 0 || journey.length < 2) return;
@@ -76,6 +91,12 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false }: 
       if (cancelled || !svgRef.current) return;
 
       d3Ref.current = d3;
+
+      const journeyKey = journey.join(",");
+      const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const shouldAnimate = hasAnimated.current !== journeyKey && !prefersReducedMotion;
+      // Mark before any async work so a concurrent re-run skips the animation
+      if (shouldAnimate) hasAnimated.current = journeyKey;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const world = worldData as any;
@@ -117,15 +138,13 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false }: 
         .selectAll("path")
         .data(countries.features)
         .join("path")
+        .attr("class", "country-border")
         .attr("d", pathGen)
         .attr("fill", "#f1f5f9")
         .attr("stroke", "#e2e8f0")
         .attr("stroke-width", 0.4);
 
       const airportLookup = new Map(airports.map((a) => [a.code, a]));
-      const prefersReducedMotion = window.matchMedia(
-        "(prefers-reduced-motion: reduce)"
-      ).matches;
 
       // Great-circle arc per leg — classed so the zoom handler can select them
       for (let i = 0; i < journey.length - 1; i++) {
@@ -154,28 +173,22 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false }: 
         const totalLength = (pathEl.node() as SVGPathElement).getTotalLength();
         pathEl
           .attr("stroke-dasharray", totalLength)
-          .attr("stroke-dashoffset", totalLength)
-          .transition()
-          .duration(prefersReducedMotion ? 0 : 1000)
-          .delay(prefersReducedMotion ? 0 : i * 280)
-          .ease(d3.easeQuadOut)
-          .attr("stroke-dashoffset", 0);
+          .attr("stroke-dashoffset", shouldAnimate ? totalLength : 0);
+
+        if (shouldAnimate) {
+          pathEl
+            .transition()
+            .duration(1000)
+            .delay(i * 280)
+            .ease(d3.easeQuadOut)
+            .attr("stroke-dashoffset", 0);
+        }
       }
 
-      // Tile label constants — shared between initial render and zoom handler
-      const FONT_SIZE = 10;
-      const TILE_PAD_X = 5;
-      const TILE_PAD_Y = 2;
-      const TILE_CORNER = 4;
-      const TILE_OFFSET_X = 10;
-      const TILE_OFFSET_Y = -7;
-
-      // Build marker data — deduplicate airports (home appears at start and end)
-      type MarkerDatum = { code: string; x: number; y: number; label: string; ox: number; oy: number };
+      // Build deduplicated airport positions for markers
+      type MarkerDatum = { code: string; x: number; y: number; ox: number; oy: number };
       const markerData: MarkerDatum[] = [];
       const seen = new Set<string>();
-      const homeCode = journey[0];
-      let stopNum = 1;
       journey.forEach((code) => {
         if (seen.has(code)) return;
         seen.add(code);
@@ -183,17 +196,10 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false }: 
         if (!airport) return;
         const projected = projection([airport.lng, airport.lat]);
         if (!projected) return;
-        const stopLabel = code === homeCode ? "Home" : String(stopNum++);
-        markerData.push({ code, x: projected[0], y: projected[1], label: `${stopLabel} · ${code}`, ox: TILE_OFFSET_X, oy: TILE_OFFSET_Y });
+        markerData.push({ code, x: projected[0], y: projected[1], ox: 10, oy: -7 });
       });
 
-      const isDark = document.documentElement.classList.contains("dark");
-      const tileBg = isDark ? "hsl(224 68% 14%)" : "#ffffff";
-      const tileFg = isDark ? "hsl(210 20% 90%)" : "#1e293b";
-      const tileBorder = isDark ? "hsl(220 50% 30%)" : "#cbd5e1";
-
-      // Markers and label tiles use data binding so the zoom handler can update
-      // their positions using each datum's base coordinates
+      // Markers use data binding so the zoom handler can update positions
       const markerGroups = g
         .selectAll<SVGGElement, MarkerDatum>(".airport-marker-group")
         .data(markerData)
@@ -209,78 +215,97 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false }: 
         .attr("stroke", "white")
         .attr("stroke-width", 1.5);
 
-      // Each label tile is a group (rect + text) that gets scale(1/k) on zoom
-      // so the tile stays visually constant size regardless of zoom level
-      const labelTiles = markerGroups.append("g")
-        .attr("class", "airport-label-group")
-        .attr("transform", (d) => `translate(${d.x + d.ox}, ${d.y + d.oy})`);
+      if (interactive) {
+        const FONT_SIZE = 10;
+        const TILE_PAD_X = 5;
+        const TILE_PAD_Y = 2;
+        const TILE_CORNER = 4;
+        const TILE_OFFSET_X = 10;
+        const TILE_OFFSET_Y = -7;
+        const homeCode = journey[0];
 
-      labelTiles.append("rect")
-        .attr("class", "airport-label-bg")
-        .attr("rx", TILE_CORNER)
-        .attr("fill", tileBg)
-        .attr("stroke", tileBorder)
-        .attr("stroke-width", 0.8);
+        const isDark = document.documentElement.classList.contains("dark");
+        const tileBg = isDark ? "hsl(224 68% 14%)" : "#ffffff";
+        const tileFg = isDark ? "hsl(210 20% 90%)" : "#1e293b";
+        const tileBorder = isDark ? "hsl(220 50% 30%)" : "#cbd5e1";
 
-      labelTiles.append("text")
-        .attr("class", "airport-label")
-        .attr("x", TILE_PAD_X)
-        .attr("y", FONT_SIZE + TILE_PAD_Y - 1)
-        .attr("font-size", FONT_SIZE)
-        .attr("font-weight", "600")
-        .attr("font-family", "system-ui, sans-serif")
-        .attr("fill", tileFg)
-        .text((d) => d.label);
+        // Each label tile is a group (rect + text) that gets scale(1/k) on zoom
+        // so the tile stays visually constant size regardless of zoom level
+        const labelTiles = markerGroups.append("g")
+          .attr("class", "airport-label-group")
+          .attr("transform", (d) => `translate(${d.x + d.ox}, ${d.y + d.oy})`);
 
-      // Size rects and pick the candidate offset with least overlap for each label (greedy)
-      const labelH = FONT_SIZE + TILE_PAD_Y * 2;
-      type Rect = { x: number; y: number; w: number; h: number };
-      const placedRects: Rect[] = [];
+        labelTiles.append("rect")
+          .attr("class", "airport-label-bg")
+          .attr("rx", TILE_CORNER)
+          .attr("fill", tileBg)
+          .attr("stroke", tileBorder)
+          .attr("stroke-width", 0.8);
 
-      const overlapArea = (a: Rect, b: Rect) => {
-        const dx = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
-        const dy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
-        return dx * dy;
-      };
+        let stopNum = 1;
+        labelTiles.append("text")
+          .attr("class", "airport-label")
+          .attr("x", TILE_PAD_X)
+          .attr("y", FONT_SIZE + TILE_PAD_Y - 1)
+          .attr("font-size", FONT_SIZE)
+          .attr("font-weight", "600")
+          .attr("font-family", "system-ui, sans-serif")
+          .attr("fill", tileFg)
+          .text((d) => {
+            const stopLabel = d.code === homeCode ? "Home" : String(stopNum++);
+            return `${stopLabel} · ${d.code}`;
+          });
 
-      markerGroups.each(function(d) {
-        const grp = d3.select(this);
-        const textEl = grp.select<SVGTextElement>(".airport-label").node()!;
-        const labelW = textEl.getBBox().width + TILE_PAD_X * 2;
+        // Size rects and pick the candidate offset with least overlap for each label (greedy)
+        const labelH = FONT_SIZE + TILE_PAD_Y * 2;
+        type Rect = { x: number; y: number; w: number; h: number };
+        const placedRects: Rect[] = [];
 
-        grp.select(".airport-label-bg").attr("width", labelW).attr("height", labelH);
+        const overlapArea = (a: Rect, b: Rect) => {
+          const dx = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+          const dy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+          return dx * dy;
+        };
 
-        // Six candidate positions: right-above, right-below, left-above, left-below, right-mid, left-mid
-        const candidates = [
-          { ox: TILE_OFFSET_X, oy: TILE_OFFSET_Y },
-          { ox: TILE_OFFSET_X, oy: 8 },
-          { ox: -labelW - TILE_OFFSET_X, oy: TILE_OFFSET_Y },
-          { ox: -labelW - TILE_OFFSET_X, oy: 8 },
-          { ox: TILE_OFFSET_X, oy: -labelH / 2 },
-          { ox: -labelW - TILE_OFFSET_X, oy: -labelH / 2 },
-        ];
+        markerGroups.each(function(d) {
+          const grp = d3.select(this);
+          const textEl = grp.select<SVGTextElement>(".airport-label").node()!;
+          const labelW = textEl.getBBox().width + TILE_PAD_X * 2;
 
-        let bestOx = TILE_OFFSET_X;
-        let bestOy = TILE_OFFSET_Y;
-        let minOverlap = Infinity;
+          grp.select(".airport-label-bg").attr("width", labelW).attr("height", labelH);
 
-        for (const c of candidates) {
-          const rect: Rect = { x: d.x + c.ox, y: d.y + c.oy, w: labelW, h: labelH };
-          const total = placedRects.reduce((sum, p) => sum + overlapArea(rect, p), 0);
-          if (total < minOverlap) {
-            minOverlap = total;
-            bestOx = c.ox;
-            bestOy = c.oy;
+          // Six candidate positions: right-above, right-below, left-above, left-below, right-mid, left-mid
+          const candidates = [
+            { ox: TILE_OFFSET_X, oy: TILE_OFFSET_Y },
+            { ox: TILE_OFFSET_X, oy: 8 },
+            { ox: -labelW - TILE_OFFSET_X, oy: TILE_OFFSET_Y },
+            { ox: -labelW - TILE_OFFSET_X, oy: 8 },
+            { ox: TILE_OFFSET_X, oy: -labelH / 2 },
+            { ox: -labelW - TILE_OFFSET_X, oy: -labelH / 2 },
+          ];
+
+          let bestOx = TILE_OFFSET_X;
+          let bestOy = TILE_OFFSET_Y;
+          let minOverlap = Infinity;
+
+          for (const c of candidates) {
+            const rect: Rect = { x: d.x + c.ox, y: d.y + c.oy, w: labelW, h: labelH };
+            const total = placedRects.reduce((sum, p) => sum + overlapArea(rect, p), 0);
+            if (total < minOverlap) {
+              minOverlap = total;
+              bestOx = c.ox;
+              bestOy = c.oy;
+            }
           }
-        }
 
-        d.ox = bestOx;
-        d.oy = bestOy;
-        placedRects.push({ x: d.x + bestOx, y: d.y + bestOy, w: labelW, h: labelH });
+          d.ox = bestOx;
+          d.oy = bestOy;
+          placedRects.push({ x: d.x + bestOx, y: d.y + bestOy, w: labelW, h: labelH });
 
-        grp.select<SVGGElement>(".airport-label-group")
-          .attr("transform", `translate(${d.x + bestOx}, ${d.y + bestOy})`);
-      });
+          grp.select<SVGGElement>(".airport-label-group")
+            .attr("transform", `translate(${d.x + bestOx}, ${d.y + bestOy})`);
+        });
+      }
 
       // Compute initial transform to fit the route's bounding box with padding
       const uniqueCodes = [...new Set(journey)];
@@ -316,33 +341,43 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false }: 
           .scale(scale);
       }
 
-      // Zoom behaviour — transforms the content group and inverse-scales
-      // strokes/markers/labels so they stay visually constant size
-      const zoom = d3.zoom<SVGSVGElement, unknown>()
-        .scaleExtent([Math.min(0.1, initialTransform.k * 0.8), 15])
-        .on("zoom", (event) => {
-          const { transform } = event;
-          g.attr("transform", transform);
-          const k = transform.k;
+      if (interactive) {
+        // Zoom behaviour — transforms the content group and inverse-scales
+        // strokes/markers/labels so they stay visually constant size
+        const zoom = d3.zoom<SVGSVGElement, unknown>()
+          .scaleExtent([Math.min(0.1, initialTransform.k * 0.8), 15])
+          .on("zoom", (event) => {
+            const { transform } = event;
+            g.attr("transform", transform);
+            const k = transform.k;
 
-          g.selectAll<SVGPathElement, unknown>(".flight-path")
-            .attr("stroke-width", 2.5 / k);
+            g.selectAll<SVGPathElement, unknown>(".flight-path")
+              .attr("stroke-width", 2.5 / k);
 
-          g.selectAll<SVGCircleElement, MarkerDatum>(".airport-marker")
-            .attr("r", 4.5 / k)
-            .attr("stroke-width", 1.5 / k);
+            g.selectAll<SVGCircleElement, MarkerDatum>(".airport-marker")
+              .attr("r", 4.5 / k)
+              .attr("stroke-width", 1.5 / k);
 
-          g.selectAll<SVGGElement, MarkerDatum>(".airport-label-group")
-            .attr("transform", (d) =>
-              `translate(${d.x + d.ox / k}, ${d.y + d.oy / k}) scale(${1 / k})`
-            );
-        });
+            g.selectAll<SVGGElement, MarkerDatum>(".airport-label-group")
+              .attr("transform", (d) =>
+                `translate(${d.x + d.ox / k}, ${d.y + d.oy / k}) scale(${1 / k})`
+              );
+          });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      svg.call(zoom).call(zoom.transform as any, initialTransform);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        svg.call(zoom).call(zoom.transform as any, initialTransform);
 
-      zoomRef.current = zoom;
-      initialTransformRef.current = initialTransform;
+        zoomRef.current = zoom;
+        initialTransformRef.current = initialTransform;
+      } else {
+        const k = initialTransform.k;
+        g.attr("transform", initialTransform.toString());
+        g.selectAll<SVGPathElement, unknown>(".country-border").attr("stroke-width", 0.4 / k);
+        g.selectAll<SVGPathElement, unknown>(".flight-path").attr("stroke-width", 2.5 / k);
+        g.selectAll<SVGCircleElement, unknown>(".airport-marker")
+          .attr("r", 4.5 / k)
+          .attr("stroke-width", 1.5 / k);
+      }
     }
 
     draw();
@@ -369,19 +404,21 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false }: 
             The CityHopper Way
           </span>
         )}
-        <button
-          type="button"
-          onClick={handleReset}
-          className="absolute right-0 flex items-center gap-1 text-xs text-muted hover:text-foreground transition-colors"
-          aria-label="Reset map view"
-        >
-          <RotateCcw className="w-3 h-3" />
-          Reset
-        </button>
+        {interactive && (
+          <button
+            type="button"
+            onClick={handleReset}
+            className="absolute right-0 flex items-center gap-1 text-xs text-muted hover:text-foreground transition-colors"
+            aria-label="Reset map view"
+          >
+            <RotateCcw className="w-3 h-3" />
+            Reset
+          </button>
+        )}
       </div>
       <div
         ref={containerRef}
-        className="rounded-2xl border border-border/40 bg-background/30 overflow-hidden cursor-grab active:cursor-grabbing"
+        className={`rounded-2xl border border-border/40 bg-background/30 overflow-hidden ${interactive ? "cursor-grab active:cursor-grabbing" : ""}`}
         style={{ transform: "translateZ(0)" }}
       >
         <svg ref={svgRef} />
