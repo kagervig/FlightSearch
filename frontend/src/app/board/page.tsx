@@ -5,7 +5,8 @@
 
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useMutation } from "@tanstack/react-query";
 import { Plane, ArrowLeft, AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
@@ -16,6 +17,17 @@ import { fetchBoardFlights, type BoardFlight, type BoardResponse } from "@/lib/b
 import { cn, formatDuration } from "@/lib/utils";
 
 type Tab = "departures" | "arrivals";
+
+const POPULAR_AIRPORTS = [
+  { code: "LHR", city: "London" },
+  { code: "LAX", city: "Los Angeles" },
+  { code: "JFK", city: "New York" },
+  { code: "DOH", city: "Doha" },
+  { code: "FRA", city: "Frankfurt" },
+  { code: "HKG", city: "Hong Kong" },
+  { code: "SIN", city: "Singapore" },
+  { code: "NRT", city: "Tokyo" },
+];
 
 const TIME_SLOTS = [
   { label: "Night (0–6)",       min: 0,  max: 6  },
@@ -211,8 +223,11 @@ function SpiderMap({ hubCode, hubLat, hubLon, departures, arrivals }: SpiderMapP
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-export default function BoardPage() {
-  const [airportCode, setAirportCode] = useState("");
+function BoardPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const [airportCode, setAirportCode] = useState(() => searchParams.get("airport") ?? "");
   const [airportCity, setAirportCity] = useState("");
   const [activeTab, setActiveTab] = useState<Tab>("departures");
   const [selectedSlots, setSelectedSlots] = useState<Set<number>>(new Set());
@@ -223,11 +238,27 @@ export default function BoardPage() {
     mutationFn: fetchBoardFlights,
   });
 
-  function handleSearch() {
-    if (!airportCode) return;
+  // Auto-search when the page is loaded with ?airport=XXX
+  const didAutoSearch = useRef(false);
+  useEffect(() => {
+    if (!didAutoSearch.current && airportCode) {
+      didAutoSearch.current = true;
+      mutate(airportCode);
+    }
+  }, [airportCode, mutate]);
+
+  function searchAirport(code: string) {
+    setAirportCode(code);
+    setAirportCity("");
     setSelectedSlots(new Set());
     setSelectedAirline("");
-    mutate(airportCode);
+    router.replace(`/board?airport=${code}`, { scroll: false });
+    mutate(code);
+  }
+
+  function handleSearch() {
+    if (!airportCode) return;
+    searchAirport(airportCode);
   }
 
   function toggleSlot(index: number) {
@@ -312,6 +343,29 @@ export default function BoardPage() {
         >
           Search
         </button>
+      </div>
+
+      {/* Popular airports */}
+      <div className="max-w-2xl mx-auto w-full px-6 pb-6 flex items-start gap-2">
+        <span className="text-xs font-medium shrink-0 pt-1.5" style={{ color: "var(--ch-muted)" }}>popular airports:</span>
+        <div className="flex flex-wrap gap-2">
+          {POPULAR_AIRPORTS.map(({ code, city }) => (
+            <button
+              key={code}
+              onClick={() => searchAirport(code)}
+              className={cn(
+                "px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors",
+                airportCode === code
+                  ? "bg-primary/20 text-primary border-primary/40"
+                  : "border-border hover:bg-primary/10",
+              )}
+              style={airportCode !== code ? { color: "var(--ch-muted)" } : undefined}
+            >
+              {code}
+              <span className="ml-1 opacity-60">{city}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       <main className="flex-1 max-w-5xl mx-auto w-full px-6 pb-10 space-y-4">
@@ -484,5 +538,13 @@ export default function BoardPage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function BoardPage() {
+  return (
+    <Suspense>
+      <BoardPageContent />
+    </Suspense>
   );
 }
