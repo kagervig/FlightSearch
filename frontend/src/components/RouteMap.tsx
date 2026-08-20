@@ -29,6 +29,20 @@ interface RouteMapProps {
   interactive?: boolean;
 }
 
+// Map drawing constants — centralised so zoom handler and draw path stay in sync
+const FLIGHT_PATH_STROKE_WIDTH = 2.5;
+const COUNTRY_BORDER_STROKE_WIDTH = 0.4;
+const MARKER_RADIUS = 4.5;
+const MARKER_STROKE_WIDTH = 1.5;
+
+// Airport label tile layout
+const FONT_SIZE = 10;
+const TILE_PAD_X = 5;
+const TILE_PAD_Y = 2;
+const TILE_CORNER = 4;
+const TILE_OFFSET_X = 10;
+const TILE_OFFSET_Y = -7;
+
 // Module-level cache so world data is fetched only once per page session
 let worldDataCache: unknown = null;
 
@@ -142,7 +156,7 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false, in
         .attr("d", pathGen)
         .attr("fill", "#f1f5f9")
         .attr("stroke", "#e2e8f0")
-        .attr("stroke-width", 0.4);
+        .attr("stroke-width", COUNTRY_BORDER_STROKE_WIDTH);
 
       const airportLookup = new Map(airports.map((a) => [a.code, a]));
 
@@ -167,7 +181,7 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false, in
           .attr("d", pathGen)
           .attr("fill", "none")
           .attr("stroke", `url(#${gradientId})`)
-          .attr("stroke-width", 2.5)
+          .attr("stroke-width", FLIGHT_PATH_STROKE_WIDTH)
           .attr("stroke-linecap", "round");
 
         const totalLength = (pathEl.node() as SVGPathElement).getTotalLength();
@@ -210,18 +224,12 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false, in
         .attr("class", "airport-marker")
         .attr("cx", (d) => d.x)
         .attr("cy", (d) => d.y)
-        .attr("r", 4.5)
+        .attr("r", MARKER_RADIUS)
         .attr("fill", "#3b82f6")
         .attr("stroke", "white")
-        .attr("stroke-width", 1.5);
+        .attr("stroke-width", MARKER_STROKE_WIDTH);
 
       if (interactive) {
-        const FONT_SIZE = 10;
-        const TILE_PAD_X = 5;
-        const TILE_PAD_Y = 2;
-        const TILE_CORNER = 4;
-        const TILE_OFFSET_X = 10;
-        const TILE_OFFSET_Y = -7;
         const homeCode = journey[0];
 
         const isDark = document.documentElement.classList.contains("dark");
@@ -352,11 +360,11 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false, in
             const k = transform.k;
 
             g.selectAll<SVGPathElement, unknown>(".flight-path")
-              .attr("stroke-width", 2.5 / k);
+              .attr("stroke-width", FLIGHT_PATH_STROKE_WIDTH / k);
 
             g.selectAll<SVGCircleElement, MarkerDatum>(".airport-marker")
-              .attr("r", 4.5 / k)
-              .attr("stroke-width", 1.5 / k);
+              .attr("r", MARKER_RADIUS / k)
+              .attr("stroke-width", MARKER_STROKE_WIDTH / k);
 
             g.selectAll<SVGGElement, MarkerDatum>(".airport-label-group")
               .attr("transform", (d) =>
@@ -372,11 +380,11 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false, in
       } else {
         const k = initialTransform.k;
         g.attr("transform", initialTransform.toString());
-        g.selectAll<SVGPathElement, unknown>(".country-border").attr("stroke-width", 0.4 / k);
-        g.selectAll<SVGPathElement, unknown>(".flight-path").attr("stroke-width", 2.5 / k);
+        g.selectAll<SVGPathElement, unknown>(".country-border").attr("stroke-width", COUNTRY_BORDER_STROKE_WIDTH / k);
+        g.selectAll<SVGPathElement, unknown>(".flight-path").attr("stroke-width", FLIGHT_PATH_STROKE_WIDTH / k);
         g.selectAll<SVGCircleElement, unknown>(".airport-marker")
-          .attr("r", 4.5 / k)
-          .attr("stroke-width", 1.5 / k);
+          .attr("r", MARKER_RADIUS / k)
+          .attr("stroke-width", MARKER_STROKE_WIDTH / k);
       }
     }
 
