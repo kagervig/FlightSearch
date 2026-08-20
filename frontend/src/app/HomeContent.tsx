@@ -28,6 +28,7 @@ import { PopularRoutes } from "@/components/PopularRoutes";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
+/** Serialises search form values into a /?... URL for sharing or history push. */
 function buildSearchUrl(values: SearchFormValues): string {
   const params = new URLSearchParams({
     from: values.homeAirport.code,
@@ -39,6 +40,7 @@ function buildSearchUrl(values: SearchFormValues): string {
   return `/?${params.toString()}`;
 }
 
+/** Reconstructs SearchFormValues from URL search params; returns null if required params are absent or malformed. */
 function parseSearchUrl(params: { get: (key: string) => string | null }): SearchFormValues | null {
   const from = params.get("from");
   const destinations = params.get("destinations");
@@ -68,6 +70,7 @@ interface SearchResult {
   routes: BackendRoute[];
 }
 
+/** Calls the backend multicity search endpoint and returns the raw route list. */
 async function fetchRoutes(values: SearchFormValues): Promise<SearchResult> {
   const from = values.homeAirport.code.toUpperCase();
   const destinations = values.destinations.map((d) => d.code.toUpperCase()).join(",");
@@ -85,6 +88,7 @@ async function fetchRoutes(values: SearchFormValues): Promise<SearchResult> {
   return res.json();
 }
 
+/** Returns a sorted copy of routes; duration sums flight time plus any connection layover minutes. */
 function sortedRoutes(
   routes: BackendRoute[],
   sortBy: "price" | "duration"
@@ -104,6 +108,7 @@ function sortedRoutes(
   });
 }
 
+/** Main page client component. Manages search state, syncs to the URL, and renders the hero and results/landing zones. */
 export function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
