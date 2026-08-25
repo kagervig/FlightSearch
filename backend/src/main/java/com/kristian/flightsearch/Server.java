@@ -22,7 +22,6 @@ package com.kristian.flightsearch;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -55,8 +54,8 @@ public class Server {
     private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFKLAX")
 
     // RateLimiter(maxRequests, windowMillis): multicity search is expensive, so 1 req/2 s per IP;
-    // airport search is lightweight but called on every keystroke, so 1 req/1 s; all other
-    // endpoints share a generous 3 req/60 s.
+    // airport search is lightweight but called on every keystroke, so 1 req/1s; 
+    // all other endpoints share a generous 3 req/60 s.
     private static final RateLimiter MULTICITY_LIMITER = new RateLimiter(1, 2_000);
     private static final RateLimiter AIRPORT_SEARCH_LIMITER = new RateLimiter(1, 1_000);
     private static final RateLimiter DEFAULT_LIMITER = new RateLimiter(3, 60_000);
@@ -70,40 +69,8 @@ public class Server {
         int port = Integer.parseInt(System.getenv().getOrDefault("PORT", "8080"));
 
         // Step 3: Create Javalin app with CORS enabled
-        // CORS (Cross-Origin Resource Sharing) allows your frontend on Vercel
-        // to call this API on Railway - without it, browsers block the request
-        Javalin app = Javalin.create(config -> {
-            config.bundledPlugins.enableCors(cors -> {
-                cors.addRule(rule -> rule.anyHost()); // Allow requests from any domain
-            });
-        });
-
-        // Reject requests that exceed the per-IP rate limit before they reach any
-        // handler.
-        // Render sits behind a load balancer, so the real client IP is in
-        // X-Forwarded-For.
-        app.before(ctx -> {
-            String ip = ctx.header("X-Forwarded-For");
-            if (ip != null && !ip.isBlank()) {
-                ip = ip.split(",")[0].trim();
-            } else {
-                ip = ctx.ip();
-            }
-
-            RateLimiter limiter;
-            if (ctx.path().equals("/api/flights/multicity")) {
-                limiter = MULTICITY_LIMITER;
-            } else if (ctx.path().equals("/api/airports/search")) {
-                limiter = AIRPORT_SEARCH_LIMITER;
-            } else {
-                limiter = DEFAULT_LIMITER;
-            }
-
-            if (!limiter.isAllowed(ip)) {
-                ctx.status(429).json(Map.of("error", "Too many requests — please wait a moment and try again"));
-                ctx.skipRemainingHandlers();
-            }
-        });
+        Javalin app = createJavalinApp();
+        
 
         // Step 4: Define routes (endpoints)
         // Each route maps a URL pattern to a handler function
@@ -138,15 +105,56 @@ public class Server {
 
         // Step 5: Start the server
         app.start(port);
-        // System.out.println("Server started on port " + port);
-        // System.out.println("Endpoints:");
-        // System.out.println("  GET /health");
-        // System.out.println("  GET /api/airports");
-        // System.out.println("  GET /api/flights/search?from=XXX&to=YYY");
-        // System.out.println("  GET /api/routes/cheapest?from=XXX");
-        // System.out.println("  GET /api/flights/multicity?from=XXX&destinations=YYY,ZZZ");
-        // System.out.println("  GET /api/airports/search?city=XXX");
+
     }
+
+
+    /**
+     * Creates and configures the Javalin application.
+     *
+     * Enables CORS for all origins so the frontend on Vercel can reach this API,
+     * and registers a before-filter that enforces per-IP rate limits. Endpoint-specific
+     * limiters are applied to the expensive multicity and high-frequency airport search
+     * routes; all other endpoints share a default limiter.
+     */
+    private static Javalin createJavalinApp(){
+            // CORS (Cross-Origin Resource Sharing) allows your frontend on Vercel
+            // to call this API on Railway - without it, browsers block the request
+            Javalin app = Javalin.create(config -> {
+                config.bundledPlugins.enableCors(cors -> {
+                    cors.addRule(rule -> rule.anyHost()); // Allow requests from any domain
+                });
+            });
+
+            // Reject requests that exceed the per-IP rate limit before they reach any
+            // handler.
+            // Render sits behind a load balancer, so the real client IP is in
+            // X-Forwarded-For.
+            app.before(ctx -> {
+                String ip = ctx.header("X-Forwarded-For");
+                if (ip != null && !ip.isBlank()) {
+                    ip = ip.split(",")[0].trim();
+                } else {
+                    ip = ctx.ip();
+                }
+
+                RateLimiter limiter;
+                if (ctx.path().equals("/api/flights/multicity")) {
+                    limiter = MULTICITY_LIMITER;
+                } else if (ctx.path().equals("/api/airports/search")) {
+                    limiter = AIRPORT_SEARCH_LIMITER;
+                } else {
+                    limiter = DEFAULT_LIMITER;
+                }
+
+                if (!limiter.isAllowed(ip)) {
+                    ctx.status(429).json(Map.of("error", "Too many requests — please wait a moment and try again"));
+                    ctx.skipRemainingHandlers();
+                }
+            });
+            return app;
+
+        }
 
     /**
      * Loads all flight data into memory - runs once at startup
