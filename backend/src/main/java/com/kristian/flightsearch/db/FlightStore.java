@@ -1,10 +1,12 @@
 package com.kristian.flightsearch.db;
 
 import java.sql.Connection;
+import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -91,7 +93,7 @@ public class FlightStore {
     /**
      * takes as input the results from the sql query, row by row
      * fetches airport objects of the origin and destination airports
-     * calculates flight distance using the haversine formula in calcDistance method 
+     * calculates flight distance using the haversine formula in calcDistance method
      * calculates flight duration based on distance using calculateFlightDuration
      * builds a hashmap of all data to be displayed in that row
      * returns the hashmap
@@ -127,11 +129,8 @@ public class FlightStore {
     }
 
     /*
-     * Reads all flights from the database. Airport objects are resolved from AirportStore
-     * so each airport is represented by a single shared instance. Joins airlines and
-     * planes so airlineName and aircraftName are available for display without a
-     * second query.
-     * Returns a HashMap keyed by flight_number.
+     * Returns all distinct (origin, destination) pairs for direct flights.
+     * Used at startup to build the connectivity graph without loading flight objects.
      */
     public List<String[]> getConnectionMap() {
         List<String[]> connections = new ArrayList<>();
@@ -153,8 +152,8 @@ public class FlightStore {
     }
 
     /*
-     * Fetches full Flight objects for a list of (origin, destination) legs.
-     * Returns a map keyed by "ORIGINDEST" (e.g. "YYZJFK")
+     * Fetches full Flight objects for a list of (origin, destination, date) legs.
+     * Returns a map keyed by "ORIGINDESTDATE" (e.g. "YYZJFK2026-04-15")
      * whose values are lists of Flight objects with price and metadata populated.
      */
     public HashMap<String, ArrayList<Flight>> readFlightsForLegs(List<LegQuery> legs) {
@@ -163,15 +162,15 @@ public class FlightStore {
 
         StringBuilder sql = new StringBuilder(
                 "SELECT f.flight_number, f.departure_time, f.ticket_price, " +
-                "f.origin, f.destination, a.airline_name, p.name AS aircraft_name " +
+                "f.origin, f.destination, f.flight_date, a.airline_name, p.name AS aircraft_name " +
                 "FROM flights f " +
                 "LEFT JOIN airlines a ON f.airline_code = a.airline_code " +
                 "LEFT JOIN planes p ON f.aircraft_type = p.iata_code " +
-                "WHERE (f.origin, f.destination) IN (");
+                "WHERE f.stops = 0 AND (f.origin, f.destination, f.flight_date) IN (");
 
         for (int i = 0; i < legs.size(); i++) {
             if (i > 0) sql.append(", ");
-            sql.append("(?, ?)");
+            sql.append("(?, ?, ?)");
         }
         sql.append(")");
 
@@ -182,6 +181,7 @@ public class FlightStore {
             for (LegQuery leg : legs) {
                 pstmt.setString(paramIdx++, leg.origin());
                 pstmt.setString(paramIdx++, leg.destination());
+                pstmt.setDate(paramIdx++, Date.valueOf(leg.date()));
             }
 
             try (ResultSet rs = pstmt.executeQuery()) {
@@ -199,7 +199,8 @@ public class FlightStore {
                     flight.setAirlineName(rs.getString("airline_name"));
                     flight.setAircraftName(rs.getString("aircraft_name"));
 
-                    String key = rs.getString("origin") + rs.getString("destination");
+                    String key = rs.getString("origin") + rs.getString("destination")
+                            + rs.getDate("flight_date").toLocalDate().toString();
                     result.computeIfAbsent(key, k -> new ArrayList<>()).add(flight);
                 }
             }
@@ -212,10 +213,10 @@ public class FlightStore {
     }
 
     /*
-     * Fetches all direct flights between two airports.
+     * Fetches direct flights between two airports on a specific date.
      * Used by the /api/flights/search endpoint.
      */
-    public ArrayList<Flight> getFlightsForRoute(String origin, String destination) {
+    public ArrayList<Flight> getFlightsForRoute(String origin, String destination, LocalDate date) {
         ArrayList<Flight> flights = new ArrayList<>();
 
         Airport originAirport = airportStore.getAirportByCode(origin);
@@ -229,13 +230,14 @@ public class FlightStore {
                      "FROM flights f " +
                      "LEFT JOIN airlines a ON f.airline_code = a.airline_code " +
                      "LEFT JOIN planes p ON f.aircraft_type = p.iata_code " +
-                     "WHERE f.origin = ? AND f.destination = ?";
+                     "WHERE f.origin = ? AND f.destination = ? AND f.flight_date = ? AND f.stops = 0";
 
         try (Connection conn = dataSource.getConnection();
                 PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
             pstmt.setString(1, origin);
             pstmt.setString(2, destination);
+            pstmt.setDate(3, Date.valueOf(date));
 
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
