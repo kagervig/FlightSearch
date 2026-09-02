@@ -2,8 +2,11 @@ package com.kristian.flightsearch.flightgraph;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.time.Duration;
 
+import com.kristian.flightsearch.datagenerator.FlightDistanceCalculator;
+import com.kristian.flightsearch.datagenerator.FlightDurationCalculator;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
 
@@ -96,6 +99,23 @@ public class FlightGraph {
         flightNetwork.print();
 
     }
+    /**
+     * Builds edges from a connection map (distinct origin/destination pairs).
+     * Edge weight is the great-circle distance in km; duration is computed from distance.
+     * Used at startup instead of loading all flight objects into memory.
+     */
+    public static void addConnectionEdges(FlightGraph graph, List<String[]> connections) {
+        for (String[] conn : connections) {
+            AirportVertex origin = graph.getVertex(conn[0]);
+            AirportVertex dest   = graph.getVertex(conn[1]);
+            if (origin == null || dest == null) continue;
+
+            double distKm  = FlightDistanceCalculator.calcDistance(origin.getData(), dest.getData());
+            Duration dur   = FlightDurationCalculator.calculateFlightDuration(distKm);
+            graph.addEdge(origin, dest, (int) distKm, dur, "");
+        }
+    }
+
     public static void addFlightEdges(FlightGraph flightNetwork, HashMap<String, ArrayList<Flight>> flightIndex){
         for (ArrayList<Flight> flights : flightIndex.values()) {
             for (Flight f : flights) {
@@ -111,8 +131,6 @@ public class FlightGraph {
     }
 
     public static FlightGraph initalizeFlightGraph(Airport[] airports){
-        System.out.println("Initializing flight data...");
-
         // Create an empty weighted, directed graph
         // Weighted = edges have values (price, duration)
         // Directed = JFK->LAX is different from LAX->JFK
