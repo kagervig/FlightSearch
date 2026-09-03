@@ -5,14 +5,17 @@ import java.time.format.DateTimeFormatter;
 
 import com.kristian.flightsearch.models.Flight;
 
+/** Formats and prints flight details to stdout. */
 public class FlightPrinter {
 
     Flight flight;
 
+    /** Stores a flight reference for later use. */
     public void flightPrinter(Flight f) {
         this.flight = f;
     }
 
+    /** Prints a flight card showing route, times, duration, and price; no-ops on null. */
     public void print(Flight flight) {
         if (flight == null) {
             System.out.println("Error, flight not found");

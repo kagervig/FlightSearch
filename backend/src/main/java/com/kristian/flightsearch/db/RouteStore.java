@@ -47,7 +47,17 @@ public class RouteStore {
         }
         return results;
     }
-
+    /** findFlightHome finds all available flights from the user's current location back to their home airport
+     * 
+     * 
+     * @param currentLocation - when the user is building their route, this stores their current airport
+     * @param homeAirport - before building their route, the user is prompted to give their home airport to start searching
+     * @param conn - database connection
+     * @return
+     */
+    // TODO: wire up in Server.java as: app.get("/api/routes/home", Server::findFlightHome);
+    // Query params: origin, destination (IATA codes)
+    // Returns: JSON array of FlightResult
     public static ArrayList<FlightResult> findFlightHome(String currentLocation, String homeAirport, Connection conn) {
         ArrayList<FlightResult> results = new ArrayList<>();
         try (PreparedStatement ps = conn.prepareStatement(
@@ -80,17 +90,17 @@ public class RouteStore {
     }
 
 
-    /** Returns true if the given IATA code exists in the airports table. */
+    /** 
+     * Validates that an airport entered as a search term is in the list of supported airports
+     * Returns true if the given IATA code exists in the airports table. */
     public static boolean validateAirport(String airport, Connection conn) {
         try (PreparedStatement ps = conn.prepareStatement("SELECT iata_code FROM airports WHERE iata_code = ?")) {
         ps.setString(1, airport);
         ResultSet rs = ps.executeQuery();
         if (rs.next()) {
-            //System.out.println(rs.getString("iata_code") + " is a valid airport...");
             return true;
         } else {
             return false;
-            //System.err.println(homeAirport + " was not found...");
         }
         } catch (SQLException e) {
             System.out.println("Query failed: " + e.getMessage());
@@ -123,7 +133,7 @@ public class RouteStore {
         return null;
     }
 
-    /** Converts a FlightResult into a Flight object, calculating distance via Haversine. */
+    /** Converts a FlightResult into a Flight object, calculating distance using the Haversine formula. */
     public static Flight convertToFlight(FlightResult fr, Connection conn) {
         Airport origin = getAirport(fr.origin(), conn);
         Airport destination = getAirport(fr.destination(), conn);

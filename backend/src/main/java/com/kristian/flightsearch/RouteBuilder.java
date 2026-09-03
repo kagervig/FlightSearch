@@ -14,6 +14,7 @@ import com.kristian.flightsearch.utils.FlightPrinter;
 /** Terminal runner for building and testing route queries before they become API endpoints. */
 public class RouteBuilder {
 
+    /** Launches the interactive terminal session for building a multi-leg route. */
     public static void main(String[] args) {
         Scanner scnr = new Scanner(System.in);
         boolean goingHome = false;
@@ -38,65 +39,74 @@ public class RouteBuilder {
 
             ArrayList<Flight> route = new ArrayList<>();
 
-            if (RouteStore.validateAirport(homeAirport, conn)) {
-                String currentLocation = homeAirport;
+            String currentLocation = homeAirport;
 
-                while (!goingHome) {
-                    System.out.println("\nCheapest flights departing from " + currentLocation);
-                    ArrayList<FlightResult> fr = RouteStore.findFlights(currentLocation, conn);
-                    printFlightResults(fr);
+            while (!goingHome) {
+                System.out.println("\nCheapest flights departing from " + currentLocation);
+                ArrayList<FlightResult> fr = RouteStore.findFlights(currentLocation, conn);
+                printFlightResults(fr);
 
-                    System.out.print("\nMake a selection: ");
-                    System.out.print("\n0 to search for flights home: ");
-                    int selection = scnr.nextInt();
-                    while (selection < 0 || selection > fr.size()) {
-                        System.out.print("Make a valid selection (0-" + fr.size() + "): ");
-                        selection = scnr.nextInt();
-                    }
-
-                    if (selection == 0) {
-                        fr = RouteStore.findFlightHome(currentLocation, homeAirport, conn);
-                        if (fr == null || fr.isEmpty()) {
-                            System.out.println("No direct flights home from " + currentLocation + " — pick another destination first.");
-                        } else {
-                            goingHome = true;
-                            printFlightResults(fr);
-                            System.out.print("\nMake a selection: ");
-                            selection = scnr.nextInt();
-                            while (selection < 0 || selection > fr.size()) {
-                                System.out.print("Make a valid selection (1-" + fr.size() + "): ");
-                                selection = scnr.nextInt();
-                            }
-                            Flight chosen = RouteStore.convertToFlight(fr.get(selection - 1), conn);
-                            route.add(chosen);
-                        }
-                    } else {
-                        Flight chosen = RouteStore.convertToFlight(fr.get(selection - 1), conn);
-                        route.add(chosen);
-                        currentLocation = fr.get(selection - 1).destination();
-                    }
+                System.out.print("\nMake a selection: ");
+                System.out.print("\n0 to search for flights home: ");
+                int selection = scnr.nextInt();
+                while (selection < 0 || selection > fr.size()) {
+                    System.out.print("Make a valid selection (0-" + fr.size() + "): ");
+                    selection = scnr.nextInt();
                 }
 
-                System.out.println("\nNumber of legs: " + route.size());
-                for (Flight f: route){
-                    fp.print(f);
-                    ticketPrice += f.getPrice();
+                if (selection == 0) {
+                    //if the user selects 0, it means they want to find flights from current location to home
+                    goingHome = flyHome(currentLocation, homeAirport, conn, route, scnr);
+                } else {
+                    Flight chosen = RouteStore.convertToFlight(fr.get(selection - 1), conn);
+                    if (chosen == null) {
+                        System.out.println("Could not load flight data — please try another selection.");
+                        continue;
+                    }
+                    route.add(chosen);
+                    currentLocation = fr.get(selection - 1).destination();
                 }
-                System.out.println("");
-                System.out.println("Total Ticket Price: $" + ticketPrice);
-            } else {
-                System.out.println("Airport not found: " + homeAirport);
             }
+
+            System.out.println("\nNumber of legs: " + route.size());
+            for (Flight f: route){
+                fp.print(f);
+                ticketPrice += f.getPrice();
+            }
+            System.out.println("");
+            System.out.println("Total Ticket Price: $" + ticketPrice);
 
         } catch (SQLException e) {
             System.out.println("Query failed: " + e.getMessage());
         }
-
-
-      
-        
     }
 
+    /** Fetches return flights, prompts the user to pick one, and adds it to the route.
+     *  Returns true when a flight is chosen so the caller can exit its loop, false if no direct flight exists. */
+    public static boolean flyHome(String currentLocation, String homeAirport, Connection conn, ArrayList<Flight> route, Scanner scnr) {
+        ArrayList<FlightResult> fr = RouteStore.findFlightHome(currentLocation, homeAirport, conn);
+        if (fr == null || fr.isEmpty()) {
+            System.out.println("No direct flights home from " + currentLocation + " — pick another destination first.");
+            return false;
+        } else {
+            printFlightResults(fr);
+            System.out.print("\nMake a selection: ");
+            int selection = scnr.nextInt();
+            while (selection < 0 || selection > fr.size()) {
+                System.out.print("Make a valid selection (1-" + fr.size() + "): ");
+                selection = scnr.nextInt();
+            }
+            Flight chosen = RouteStore.convertToFlight(fr.get(selection - 1), conn);
+            if (chosen == null) {
+                System.out.println("Could not load flight data — please try another selection.");
+                return false;
+            }
+            route.add(chosen);
+            return true;
+        }
+    }
+
+    /** Prints a numbered table of flight options; row 0 is always the Return Home option. */
     public static void printFlightResults(ArrayList<FlightResult> results){
         System.out.printf("%-4s %-8s %-13s %-10s %s%n", "#", "Price", "Destination", "Flight", "Airline");
         System.out.println("-".repeat(49));
