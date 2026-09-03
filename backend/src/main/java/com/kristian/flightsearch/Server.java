@@ -1,28 +1,10 @@
 package com.kristian.flightsearch;
 
-/*
- * Server.java - The REST API server for FlightSearch
- *
- * This file creates a web server using Javalin that exposes your flight search
- * functionality as HTTP endpoints. Instead of a command-line menu, users (or a frontend)
- * can make HTTP requests to search for flights.
- *
- * Endpoints:
- *   GET /health                        - Returns {"status":"ok"} if server is running
- *   GET /api/airports                  - Returns list of all airports as JSON
- *   GET /api/flights/search?from=X&to=Y - Returns direct flights between two airports
- *   GET /api/routes/cheapest?from=X    - Uses Dijkstra to find cheapest routes from X
- *
- * How it works:
- *   1. On startup, loads all airport and flight data into memory (same as Main.java did)
- *   2. Builds a FlightGraph with airports as vertices and flights as edges
- *   3. Listens for HTTP requests and responds with JSON data
- */
-
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -34,11 +16,13 @@ import com.kristian.flightsearch.datagenerator.FlightGenerator;
 import com.kristian.flightsearch.db.AirportStore;
 import com.kristian.flightsearch.db.DatabaseManager;
 import com.kristian.flightsearch.db.FlightStore;
+import com.kristian.flightsearch.db.RouteStore;
 import com.kristian.flightsearch.flightgraph.AirportVertex;
 import com.kristian.flightsearch.flightgraph.Dijkstra;
 import com.kristian.flightsearch.flightgraph.FlightGraph;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
+import com.kristian.flightsearch.models.FlightResult;
 import com.kristian.flightsearch.models.Route;
 import com.kristian.flightsearch.multicitysearch.MultiCitySearch;
 
@@ -76,6 +60,9 @@ public class Server {
             config.bundledPlugins.enableCors(cors -> {
                 cors.addRule(rule -> rule.anyHost()); // Allow requests from any domain
             });
+            config.jsonMapper(new io.javalin.json.JavalinJackson().updateMapper(mapper ->
+                mapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+            ));
         });
 
         // Reject requests that exceed the per-IP rate limit before they reach any
@@ -136,6 +123,9 @@ public class Server {
         // Used to render the full network on the Route Map page
         app.get("/api/graph/connections", Server::getGraphConnections);
 
+        // Returns the top 20 cheapest flights departing from the given airport, one per destination.
+        app.get("/api/routes/search", Server::searchRoutes);
+
         // Step 5: Start the server
         app.start(port);
         // System.out.println("Server started on port " + port);
@@ -178,6 +168,20 @@ public class Server {
         FlightGraph.addFlightEdges(flightNetwork, flightIndex);
 
         // System.out.println("Loaded " + airports.length + " airports and " + flightList.size() + " flights");
+    }
+
+    private static void searchRoutes(Context ctx){
+        String origin = ctx.queryParam("origin");
+        if (origin == null) {
+            ctx.status(400).json(Map.of("error", "origin is required"));
+            return;
+        }
+        try (Connection conn = DatabaseManager.getDataSource().getConnection()) {
+            List<FlightResult> results = RouteStore.findFlights(origin, conn);
+            ctx.json(results);
+        } catch (SQLException e) {
+            ctx.status(500).json(Map.of("error", e.getMessage()));
+        }
     }
 
     /**

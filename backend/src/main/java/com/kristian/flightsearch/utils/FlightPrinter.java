@@ -6,34 +6,37 @@ import java.time.format.DateTimeFormatter;
 import com.kristian.flightsearch.models.Flight;
 
 public class FlightPrinter {
-    
+
     Flight flight;
 
-    public void flightPrinter(Flight f){
+    public void flightPrinter(Flight f) {
         this.flight = f;
     }
 
-    
     public void print(Flight flight) {
-        // Add logic to print the flight details
         if (flight == null) {
             System.out.println("Error, flight not found");
             return;
         }
-        
-        DateTimeFormatter myFormatObj = DateTimeFormatter.ofPattern("HH:mm");
 
-        System.out.println("Flight Number: " + flight.getFlightNumber());
-        System.out.println("Origin: " + flight.getOrigin().getCode());
-        System.out.println("Destination: " + flight.getDestination().getCode());
-        String formattedTime = flight.getDepartureTime().format(myFormatObj);
-        System.out.println("Departs: " + formattedTime);
-        formattedTime = flight.getArrivalTime().format(myFormatObj);
-        System.out.println("Arrives: " + formattedTime);
+        DateTimeFormatter timeFmt = DateTimeFormatter.ofPattern("HH:mm");
         Duration d = flight.getDuration();
-        formattedTime = String.format("%2d Hours %02d Minutes",d.toHours(), d.toMinutesPart());
-        System.out.println("Duration: " + formattedTime);
-        System.out.println("$" + flight.getPrice());
-        System.out.println("");
+        String duration = String.format("%dh %02dm", d.toHours(), d.toMinutesPart());
+
+        System.out.println("-".repeat(45));
+        System.out.printf("%-12s %s → %s%n",
+                flight.getFlightNumber(),
+                flight.getOrigin().getCode(),
+                flight.getDestination().getCode());
+        System.out.printf("%-12s %s → %s%n",
+                "",
+                flight.getOrigin().getCity(),
+                flight.getDestination().getCity());
+        System.out.printf("%-12s %s → %s  (%s)%n",
+                "",
+                flight.getDepartureTime().format(timeFmt),
+                flight.getArrivalTime().format(timeFmt),
+                duration);
+        System.out.printf("%-12s $%d%n", "", flight.getPrice());
     }
 }
