@@ -85,6 +85,18 @@ public class FlightStore {
         return Map.of("departures", departures, "arrivals", arrivals);
     }
 
+    /**
+     * takes as input the results from the sql query, row by row
+     * fetches airport objects of the origin and destination airports
+     * calculates flight distance using the haversine formula in calcDistance method 
+     * calculates flight duration based on distance using calculateFlightDuration
+     * builds a hashmap of all data to be displayed in that row
+     * returns the hashmap
+     * @param rs
+     * @return
+     * @throws Exception
+     */
+
     private Map<String, Object> buildBoardRow(ResultSet rs) throws Exception {
         Airport origin = airportStore.getAirportByCode(rs.getString("origin"));
         Airport destination = airportStore.getAirportByCode(rs.getString("destination"));
