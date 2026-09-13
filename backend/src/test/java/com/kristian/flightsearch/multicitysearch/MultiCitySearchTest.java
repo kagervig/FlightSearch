@@ -2,6 +2,7 @@ package com.kristian.flightsearch.multicitysearch;
 
 import com.kristian.flightsearch.flightgraph.AirportVertex;
 import com.kristian.flightsearch.flightgraph.FlightGraph;
+import java.time.Duration;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
 import com.kristian.flightsearch.models.Route;
@@ -315,15 +316,15 @@ class MultiCitySearchTest {
         AirportVertex vUio = connectionGraph.addVertex(uio);
         AirportVertex vGye = connectionGraph.addVertex(gye);
 
-        connectionGraph.addEdge(vJfk, vLhr, jfkLhr.getPrice(), jfkLhr.getDuration(), FN_JFK_LHR);
         connectionGraph.addEdge(vLhr, vJfk, lhrJfk.getPrice(), lhrJfk.getDuration(), "AA101");
-        connectionGraph.addEdge(vJfk, vGye, jfkGye.getPrice(), jfkGye.getDuration(), "UA0001");
         connectionGraph.addEdge(vGye, vJfk, gyeJfk.getPrice(), gyeJfk.getDuration(), FN_GYE_JFK);
         connectionGraph.addEdge(vLhr, vUio, lhrUio.getPrice(), lhrUio.getDuration(), FN_LHR_UIO);
         connectionGraph.addEdge(vUio, vLhr, uioLhr.getPrice(), uioLhr.getDuration(), "LH1235");
         connectionGraph.addEdge(vUio, vGye, uioGyeValid.getPrice(), uioGyeValid.getDuration(), FN_UIO_GYE_VALID);
         connectionGraph.addEdge(vGye, vUio, gyeUio.getPrice(), gyeUio.getDuration(), "AV5003");
-        // No direct LHR→GYE or GYE→LHR edge
+        // JFK has only incoming edges (return flights). Direct legs to/from JFK are handled by
+        // flightIndex before BFS is called; excluding JFK outgoing edges prevents BFS from
+        // routing through the home airport as a connection intermediate.
     }
 
     // Returns a copy of connectionFlightIndex with UIOGYE replaced by the given options only.
@@ -463,6 +464,105 @@ class MultiCitySearchTest {
             assertEquals("JFK", airports[0]);
             assertEquals("JFK", airports[airports.length - 1]);
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Dijkstra vs BFS
+    //
+    // Graph:
+    //   A→B ($1), B→C ($1), C→E ($1), E→D ($1)  — cheapest path, 3 intermediates
+    //   A→E ($5),                      E→D ($1)  — more expensive, 1 intermediate
+    //
+    // Dijkstra finds A→B→C→E→D at $4. That path has 3 intermediate airports
+    // (B, C, E), which exceeds MAX_CONNECTIONS_PER_LEG=2, so it returns null.
+    // The valid 1-intermediate path A→E→D is never returned because Dijkstra
+    // overwrites prev[E]=A with prev[E]=C when it finds the cheaper C→E edge.
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("findConnectingPath (Dijkstra) returns null when cheapest path exceeds hop limit")
+    void dijkstraMissesValidPathWhenCheapestPathExceedsHopLimit() {
+        Airport a = new Airport("AAA", "A", 0, 0, 0, 0, "A", "A");
+        Airport b = new Airport("BBB", "B", 0, 0, 0, 0, "B", "B");
+        Airport c = new Airport("CCC", "C", 0, 0, 0, 0, "C", "C");
+        Airport d = new Airport("DDD", "D", 0, 0, 0, 0, "D", "D");
+        Airport e = new Airport("EEE", "E", 0, 0, 0, 0, "E", "E");
+
+        FlightGraph g = new FlightGraph(true, true);
+        AirportVertex va = g.addVertex(a); AirportVertex vb = g.addVertex(b);
+        AirportVertex vc = g.addVertex(c); AirportVertex vd = g.addVertex(d);
+        AirportVertex ve = g.addVertex(e);
+
+        g.addEdge(va, vb, 1, Duration.ofHours(1), "F1");
+        g.addEdge(vb, vc, 1, Duration.ofHours(1), "F2");
+        g.addEdge(vc, ve, 1, Duration.ofHours(1), "F3");
+        g.addEdge(ve, vd, 1, Duration.ofHours(1), "F4");
+        g.addEdge(va, ve, 5, Duration.ofHours(1), "F5");
+
+        MultiCitySearch mcs = new MultiCitySearch(null, new HashMap<>());
+
+        assertNull(mcs.findConnectingPath("AAA", "DDD", g),
+            "Dijkstra finds cheapest path A→B→C→E→D (3 intermediates), which exceeds the hop limit — should return null");
+
+        List<String> bfsPath = mcs.findConnectingPathBFS("AAA", "DDD", g);
+        assertNotNull(bfsPath, "BFS should find the 1-intermediate path A→E→D");
+        assertEquals("AAA", bfsPath.get(0));
+        assertEquals("DDD", bfsPath.get(bfsPath.size() - 1));
+        assertTrue(bfsPath.size() - 2 <= MultiCitySearch.MAX_CONNECTIONS_PER_LEG,
+            "BFS path should have at most MAX_CONNECTIONS_PER_LEG intermediate airports");
+    }
+
+    @Test
+    @DisplayName("findConnectingPathBFS finds minimum-hop path within the hop limit")
+    void bfsFindsMinimumHopPath() {
+        Airport a = new Airport("AAA", "A", 0, 0, 0, 0, "A", "A");
+        Airport b = new Airport("BBB", "B", 0, 0, 0, 0, "B", "B");
+        Airport c = new Airport("CCC", "C", 0, 0, 0, 0, "C", "C");
+
+        FlightGraph g = new FlightGraph(true, true);
+        AirportVertex va = g.addVertex(a);
+        AirportVertex vb = g.addVertex(b);
+        AirportVertex vc = g.addVertex(c);
+
+        g.addEdge(va, vb, 100, Duration.ofHours(1), "F1");
+        g.addEdge(vb, vc, 100, Duration.ofHours(1), "F2");
+
+        MultiCitySearch mcs = new MultiCitySearch(null, new HashMap<>());
+        List<String> path = mcs.findConnectingPathBFS("AAA", "CCC", g);
+
+        assertNotNull(path);
+        assertEquals(List.of("AAA", "BBB", "CCC"), path);
+    }
+
+    @Test
+    @DisplayName("findConnectingPathBFS returns null when destination is unreachable within hop limit")
+    void bfsReturnsNullWhenUnreachableWithinHopLimit() {
+        Airport a = new Airport("AAA", "A", 0, 0, 0, 0, "A", "A");
+        Airport b = new Airport("BBB", "B", 0, 0, 0, 0, "B", "B");
+        Airport c = new Airport("CCC", "C", 0, 0, 0, 0, "C", "C");
+        Airport d = new Airport("DDD", "D", 0, 0, 0, 0, "D", "D");
+        Airport e = new Airport("EEE", "E", 0, 0, 0, 0, "E", "E");
+
+        FlightGraph g = new FlightGraph(true, true);
+        AirportVertex va = g.addVertex(a); AirportVertex vb = g.addVertex(b);
+        AirportVertex vc = g.addVertex(c); AirportVertex vd = g.addVertex(d);
+        g.addVertex(e);
+
+        // Only path: A→B→C→D, which requires 2 intermediates — exactly at limit
+        g.addEdge(va, vb, 1, Duration.ofHours(1), "F1");
+        g.addEdge(vb, vc, 1, Duration.ofHours(1), "F2");
+        g.addEdge(vc, vd, 1, Duration.ofHours(1), "F3");
+
+        // A→E exists but E has no onward connection to D
+        g.addEdge(va, g.getVertex("EEE"), 1, Duration.ofHours(1), "F4");
+
+        MultiCitySearch mcs = new MultiCitySearch(null, new HashMap<>());
+
+        // A→B→C→D is exactly 2 intermediates — should be found
+        assertNotNull(mcs.findConnectingPathBFS("AAA", "DDD", g));
+
+        // A→E→?→D — E has no connection to D, so unreachable in 1 more hop
+        assertNull(mcs.findConnectingPathBFS("EEE", "DDD", g));
     }
 
     @Test

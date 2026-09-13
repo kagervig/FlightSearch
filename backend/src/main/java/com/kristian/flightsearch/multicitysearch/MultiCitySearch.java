@@ -10,14 +10,17 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 
 import com.kristian.flightsearch.db.AirportStore;
 import com.kristian.flightsearch.db.DatabaseManager;
 import com.kristian.flightsearch.flightgraph.AirportVertex;
 import com.kristian.flightsearch.flightgraph.Dijkstra;
+import com.kristian.flightsearch.flightgraph.Edge;
 import com.kristian.flightsearch.flightgraph.FlightGraph;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
@@ -226,6 +229,7 @@ public class MultiCitySearch {
                     path = new ArrayList<>(List.of(origin, dest));
                 } else {
                     path = findConnectingPath(origin, dest, flightGraph);
+                    if (path == null) path = findConnectingPathBFS(origin, dest, flightGraph);
                     if (path == null) { permValid = false; break; }
                 }
 
@@ -249,8 +253,11 @@ public class MultiCitySearch {
     // Finds the cheapest connecting path from origin to dest via Dijkstra.
     // Returns null if unreachable or if more than MAX_CONNECTIONS_PER_LEG intermediate
     // airports are required.
+    // NOTE: Dijkstra optimises for price, not hop count. If the cheapest path exceeds
+    // MAX_CONNECTIONS_PER_LEG, this returns null even when a valid shorter path exists.
+    // Prefer findConnectingPathBFS for correctness.
     @SuppressWarnings("unchecked")
-    private ArrayList<String> findConnectingPath(String origin, String dest, FlightGraph flightGraph) {
+    ArrayList<String> findConnectingPath(String origin, String dest, FlightGraph flightGraph) {
         AirportVertex originVertex = flightGraph.getVertex(origin);
         AirportVertex destVertex = flightGraph.getVertex(dest);
         if (originVertex == null || destVertex == null) return null;
@@ -273,6 +280,49 @@ public class MultiCitySearch {
         // path.size() - 2 = number of intermediate airports
         if (path.size() - 2 > MAX_CONNECTIONS_PER_LEG) return null;
         return path;
+    }
+
+    // Finds the minimum-hop connecting path from origin to dest via BFS.
+    // Returns null if no path exists within MAX_CONNECTIONS_PER_LEG intermediate airports.
+    // Unlike findConnectingPath, this is not affected by edge weights — it finds any valid
+    // path within the hop limit, guaranteeing a result whenever one exists.
+    ArrayList<String> findConnectingPathBFS(String origin, String dest, FlightGraph flightGraph) {
+        if (flightGraph.getVertex(origin) == null || flightGraph.getVertex(dest) == null) return null;
+
+        Queue<ArrayList<String>> queue = new LinkedList<>();
+        Set<String> visited = new HashSet<>();
+
+        ArrayList<String> start = new ArrayList<>();
+        start.add(origin);
+        queue.add(start);
+        visited.add(origin);
+
+        while (!queue.isEmpty()) {
+            ArrayList<String> path = queue.poll();
+            String last = path.get(path.size() - 1);
+            AirportVertex vertex = flightGraph.getVertex(last);
+            if (vertex == null) continue;
+
+            for (Edge e : vertex.getEdges()) {
+                String neighbor = e.getEnd().getData().getCode();
+
+                if (neighbor.equals(dest)) {
+                    ArrayList<String> result = new ArrayList<>(path);
+                    result.add(dest);
+                    return result;
+                }
+
+                // path.size() - 1 = intermediate airports added so far (origin excluded)
+                if (!visited.contains(neighbor) && path.size() - 1 < MAX_CONNECTIONS_PER_LEG) {
+                    visited.add(neighbor);
+                    ArrayList<String> next = new ArrayList<>(path);
+                    next.add(neighbor);
+                    queue.add(next);
+                }
+            }
+        }
+
+        return null;
     }
 
     private record ConnectionResult(
