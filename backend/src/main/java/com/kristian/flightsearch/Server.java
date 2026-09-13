@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import com.kristian.flightsearch.datagenerator.FlightGenerator;
 import com.kristian.flightsearch.db.AirportStore;
 import com.kristian.flightsearch.db.DatabaseManager;
 import com.kristian.flightsearch.db.FlightStore;
@@ -23,6 +22,7 @@ import com.kristian.flightsearch.flightgraph.FlightGraph;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
 import com.kristian.flightsearch.models.FlightResult;
+import com.kristian.flightsearch.models.LegQuery;
 import com.kristian.flightsearch.models.Route;
 import com.kristian.flightsearch.multicitysearch.MultiCitySearch;
 
@@ -36,6 +36,7 @@ public class Server {
     // This is efficient because we don't reload data for every request
     private static FlightGraph flightNetwork; // Graph structure: airports connected by flights
     private static AirportStore airportStore; // Provides airport lookup by code
+    private static FlightStore flightStore;   // Handles database queries for flights
     private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFKLAX")
 
     // RateLimiter(maxRequests, windowMillis): multicity search is expensive, so 1 req/2 s per IP;
@@ -160,10 +161,14 @@ public class Server {
 
         flightNetwork = FlightGraph.initalizeFlightGraph(airports);
 
-        FlightStore flightStore = new FlightStore(DatabaseManager.getDataSource(), airportStore);
-        HashMap<String, Flight> flightList = flightStore.readFlights();
+        flightStore = new FlightStore(DatabaseManager.getDataSource(), airportStore);
 
-        flightIndex = FlightGenerator.flightMapper(flightList);
+        List<String[]> connections = flightStore.getConnectionMap();
+        List<LegQuery> allLegs = new ArrayList<>();
+        for (String[] conn : connections) {
+            allLegs.add(new LegQuery(conn[0], conn[1]));
+        }
+        flightIndex = flightStore.readFlightsForLegs(allLegs);
 
         FlightGraph.addFlightEdges(flightNetwork, flightIndex);
 

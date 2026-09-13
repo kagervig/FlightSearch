@@ -1,11 +1,9 @@
 package com.kristian.flightsearch.db;
 
 import java.sql.Connection;
-import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
-import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -56,8 +54,8 @@ public class FlightStore {
     }
 
     /*
-     * Fetches full Flight objects for a list of (origin, destination, date) legs.
-     * Returns a map keyed by "ORIGINDESTDATE" (e.g. "YYZJFK2026-04-15")
+     * Fetches full Flight objects for a list of (origin, destination) legs.
+     * Returns a map keyed by "ORIGINDEST" (e.g. "YYZJFK")
      * whose values are lists of Flight objects with price and metadata populated.
      */
     public HashMap<String, ArrayList<Flight>> readFlightsForLegs(List<LegQuery> legs) {
@@ -66,15 +64,15 @@ public class FlightStore {
 
         StringBuilder sql = new StringBuilder(
                 "SELECT f.flight_number, f.departure_time, f.ticket_price, " +
-                "f.origin, f.destination, f.flight_date, a.airline_name, p.name AS aircraft_name " +
+                "f.origin, f.destination, a.airline_name, p.name AS aircraft_name " +
                 "FROM flights f " +
                 "LEFT JOIN airlines a ON f.airline_code = a.airline_code " +
                 "LEFT JOIN planes p ON f.aircraft_type = p.iata_code " +
-                "WHERE f.stops = 0 AND (f.origin, f.destination, f.flight_date) IN (");
+                "WHERE (f.origin, f.destination) IN (");
 
         for (int i = 0; i < legs.size(); i++) {
             if (i > 0) sql.append(", ");
-            sql.append("(?, ?, ?)");
+            sql.append("(?, ?)");
         }
         sql.append(")");
 
@@ -85,7 +83,6 @@ public class FlightStore {
             for (LegQuery leg : legs) {
                 pstmt.setString(paramIdx++, leg.origin());
                 pstmt.setString(paramIdx++, leg.destination());
-                pstmt.setDate(paramIdx++, Date.valueOf(leg.date()));
             }
 
             try (ResultSet rs = pstmt.executeQuery()) {
@@ -103,8 +100,7 @@ public class FlightStore {
                     flight.setAirlineName(rs.getString("airline_name"));
                     flight.setAircraftName(rs.getString("aircraft_name"));
 
-                    String key = rs.getString("origin") + rs.getString("destination")
-                            + rs.getDate("flight_date").toLocalDate().toString();
+                    String key = rs.getString("origin") + rs.getString("destination");
                     result.computeIfAbsent(key, k -> new ArrayList<>()).add(flight);
                 }
             }
@@ -117,10 +113,10 @@ public class FlightStore {
     }
 
     /*
-     * Fetches direct flights between two airports on a specific date.
+     * Fetches all direct flights between two airports.
      * Used by the /api/flights/search endpoint.
      */
-    public ArrayList<Flight> getFlightsForRoute(String origin, String destination, LocalDate date) {
+    public ArrayList<Flight> getFlightsForRoute(String origin, String destination) {
         ArrayList<Flight> flights = new ArrayList<>();
 
         Airport originAirport = airportStore.getAirportByCode(origin);
@@ -134,14 +130,13 @@ public class FlightStore {
                      "FROM flights f " +
                      "LEFT JOIN airlines a ON f.airline_code = a.airline_code " +
                      "LEFT JOIN planes p ON f.aircraft_type = p.iata_code " +
-                     "WHERE f.origin = ? AND f.destination = ? AND f.flight_date = ? AND f.stops = 0";
+                     "WHERE f.origin = ? AND f.destination = ?";
 
         try (Connection conn = dataSource.getConnection();
                 PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
             pstmt.setString(1, origin);
             pstmt.setString(2, destination);
-            pstmt.setDate(3, Date.valueOf(date));
 
             try (ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
