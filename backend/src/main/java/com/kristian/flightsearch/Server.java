@@ -22,7 +22,6 @@ package com.kristian.flightsearch;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -30,7 +29,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import com.kristian.flightsearch.datagenerator.FlightGenerator;
 import com.kristian.flightsearch.db.AirportStore;
 import com.kristian.flightsearch.db.DatabaseManager;
 import com.kristian.flightsearch.db.FlightStore;
@@ -52,7 +50,7 @@ public class Server {
     // This is efficient because we don't reload data for every request
     private static FlightGraph flightNetwork; // Graph structure: airports connected by flights
     private static AirportStore airportStore; // Provides airport lookup by code
-    private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFKLAX")
+    private static FlightStore flightStore;   // Handles database queries for flights
 
     // RateLimiter(maxRequests, windowMillis): multicity search is expensive, so 1 req/2 s per IP;
     // airport search is lightweight but called on every keystroke, so 1 req/1 s; all other
@@ -82,6 +80,17 @@ public class Server {
         // handler.
         // Render sits behind a load balancer, so the real client IP is in
         // X-Forwarded-For.
+        app.before(ctx -> ctx.attribute("requestStart", System.currentTimeMillis()));
+
+        app.after(ctx -> {
+            Long start = ctx.attribute("requestStart");
+            if (start != null) {
+                long ms = System.currentTimeMillis() - start;
+                System.out.printf("[timing] %s %s %dms %d%n",
+                        ctx.method(), ctx.path(), ms, ctx.statusCode());
+            }
+        });
+
         app.before(ctx -> {
             String ip = ctx.header("X-Forwarded-For");
             if (ip != null && !ip.isBlank()) {
@@ -170,12 +179,12 @@ public class Server {
 
         flightNetwork = FlightGraph.initalizeFlightGraph(airports);
 
-        FlightStore flightStore = new FlightStore(DatabaseManager.getDataSource(), airportStore);
-        HashMap<String, Flight> flightList = flightStore.readFlights();
+        flightStore = new FlightStore(DatabaseManager.getDataSource(), airportStore);
 
-        flightIndex = FlightGenerator.flightMapper(flightList);
+        HashMap<String, ArrayList<Flight>> startupFlights = flightStore.readAllFlights();
+        System.out.println("[startup] readAllFlights: " + startupFlights.size() + " route keys");
 
-        FlightGraph.addFlightEdges(flightNetwork, flightIndex);
+        FlightGraph.addFlightEdges(flightNetwork, startupFlights);
 
         // System.out.println("Loaded " + airports.length + " airports and " + flightList.size() + " flights");
     }
@@ -340,10 +349,7 @@ public class Server {
             return;
         }
 
-        // Look up flights using our index (O(1) lookup)
-        // The key format is "ORIGIN-DESTINATION" (e.g., "JFK-LAX")
-        String routeKey = from + "-" + to;
-        ArrayList<Flight> flights = flightIndex.get(routeKey);
+        ArrayList<Flight> flights = flightStore.getFlightsForRoute(from, to);
 
         // Handle case where no direct flights exist
         if (flights == null || flights.isEmpty()) {
@@ -557,8 +563,8 @@ public class Server {
 
         // System.out.println("[multicity] from=" + from + " destinations=" + Arrays.toString(destinations) + " optimizeBy=" + optimizeBy);
 
-        MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, flightIndex);
-        ArrayList<Route> validRoutes = multiCitySearch.search(from, destinations, optimizeBy);
+        MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, flightNetwork, flightStore);
+        ArrayList<Route> validRoutes = multiCitySearch.searchByDate(from, destinations, optimizeBy, flightStore);
         // System.out.println("[multicity] direct search: " + validRoutes.size() + " routes");
 
         // When no direct-flight routes exist, fall back to connection search via Dijkstra

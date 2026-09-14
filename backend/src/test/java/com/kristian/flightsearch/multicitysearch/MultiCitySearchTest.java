@@ -253,76 +253,74 @@ class MultiCitySearchTest {
     private static final LocalDate DEPARTURE = LocalDate.of(2026, 4, 15);
 
     /*
-     * Builds a date-keyed flight index: "ORIGINDESTDATE" → [Flight, ...].
+     * Builds a route-keyed flight index: "ORIGINDEST" → [Flight, ...].
      * Flight objects are constructed directly with the appropriate prices and distances.
      */
-    private HashMap<String, ArrayList<Flight>> buildDateKeyedIndex() {
+    private HashMap<String, ArrayList<Flight>> buildRouteIndex() {
         HashMap<String, ArrayList<Flight>> idx = new HashMap<>();
 
         Flight jfkLhrFlight = new Flight(jfk, lhr, 5570.0, LocalTime.of(9, 0), "AA100");
         jfkLhrFlight.setPrice(300);
-        idx.put("JFKLHR2026-04-15", new ArrayList<>(List.of(jfkLhrFlight)));
+        idx.put("JFKLHR", new ArrayList<>(List.of(jfkLhrFlight)));
 
         Flight lhrCdgFlight = new Flight(lhr, cdg, 344.0, LocalTime.of(14, 0), "BA302");
         lhrCdgFlight.setPrice(100);
-        idx.put("LHRCDG2026-04-19", new ArrayList<>(List.of(lhrCdgFlight)));
+        idx.put("LHRCDG", new ArrayList<>(List.of(lhrCdgFlight)));
 
         Flight cdgJfkFlight = new Flight(cdg, jfk, 5837.0, LocalTime.of(16, 0), "AF006");
         cdgJfkFlight.setPrice(350);
-        idx.put("CDGJFK2026-04-22", new ArrayList<>(List.of(cdgJfkFlight)));
+        idx.put("CDGJFK", new ArrayList<>(List.of(cdgJfkFlight)));
 
         Flight jfkCdgFlight = new Flight(jfk, cdg, 5837.0, LocalTime.of(8, 0), "AF007");
         jfkCdgFlight.setPrice(280);
-        idx.put("JFKCDG2026-04-15", new ArrayList<>(List.of(jfkCdgFlight)));
+        idx.put("JFKCDG", new ArrayList<>(List.of(jfkCdgFlight)));
 
         Flight cdgLhrFlight = new Flight(cdg, lhr, 344.0, LocalTime.of(12, 0), "BA303");
         cdgLhrFlight.setPrice(90);
-        idx.put("CDGLHR2026-04-18", new ArrayList<>(List.of(cdgLhrFlight)));
+        idx.put("CDGLHR", new ArrayList<>(List.of(cdgLhrFlight)));
 
         Flight lhrJfkFlight = new Flight(lhr, jfk, 5570.0, LocalTime.of(11, 0), "AA101");
         lhrJfkFlight.setPrice(320);
-        idx.put("LHRJFK2026-04-22", new ArrayList<>(List.of(lhrJfkFlight)));
+        idx.put("LHRJFK", new ArrayList<>(List.of(lhrJfkFlight)));
 
         return idx;
     }
 
     @Test
-    @DisplayName("searchByDate returns valid routes when all legs have flights on correct dates")
+    @DisplayName("searchByDate returns valid routes when all legs have flights")
     void searchByDateReturnsRoutesWhenAllLegsPresent() {
         MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
         ArrayList<Route> routes = mcs.searchByDateWithIndex(
-                "JFK", new String[]{"LHR", "CDG"}, DEPARTURE, Map.of("LHR", 3, "CDG", 2), "price",
-                buildDateKeyedIndex());
+                "JFK", new String[]{"LHR", "CDG"}, "price", buildRouteIndex());
         assertFalse(routes.isEmpty());
     }
 
     @Test
-    @DisplayName("searchByDate excludes permutations where a leg has no flights on its required date")
-    void searchByDateExcludesPermutationWithMissingLegOnDate() {
+    @DisplayName("searchByDate excludes permutations where a leg has no flights")
+    void searchByDateExcludesPermutationWithMissingLeg() {
         // Only the JFK→LHR→CDG→JFK permutation has flights; the reverse is absent
         HashMap<String, ArrayList<Flight>> partialIndex = new HashMap<>();
         Flight f1 = new Flight(jfk, lhr, 5570.0, LocalTime.of(9, 0), "AA100"); f1.setPrice(300);
         Flight f2 = new Flight(lhr, cdg, 344.0, LocalTime.of(14, 0), "BA302"); f2.setPrice(100);
         Flight f3 = new Flight(cdg, jfk, 5837.0, LocalTime.of(16, 0), "AF006"); f3.setPrice(350);
-        partialIndex.put("JFKLHR2026-04-15", new ArrayList<>(List.of(f1)));
-        partialIndex.put("LHRCDG2026-04-19", new ArrayList<>(List.of(f2)));
-        partialIndex.put("CDGJFK2026-04-22", new ArrayList<>(List.of(f3)));
+        partialIndex.put("JFKLHR", new ArrayList<>(List.of(f1)));
+        partialIndex.put("LHRCDG", new ArrayList<>(List.of(f2)));
+        partialIndex.put("CDGJFK", new ArrayList<>(List.of(f3)));
 
         MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
         ArrayList<Route> routes = mcs.searchByDateWithIndex(
-                "JFK", new String[]{"LHR", "CDG"}, DEPARTURE, Map.of("LHR", 3, "CDG", 2), "price", partialIndex);
+                "JFK", new String[]{"LHR", "CDG"}, "price", partialIndex);
 
         assertEquals(1, routes.size());
         assertArrayEquals(new String[]{"JFK", "LHR", "CDG", "JFK"}, routes.get(0).getAirports());
     }
 
     @Test
-    @DisplayName("searchByDate returns empty list when no flights exist on the required dates")
-    void searchByDateReturnsEmptyWhenNoFlightsOnDates() {
+    @DisplayName("searchByDate returns empty list when route index is empty")
+    void searchByDateReturnsEmptyWhenIndexEmpty() {
         MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
         ArrayList<Route> routes = mcs.searchByDateWithIndex(
-                "JFK", new String[]{"LHR", "CDG"}, DEPARTURE, Map.of("LHR", 3, "CDG", 2), "price",
-                new HashMap<>());
+                "JFK", new String[]{"LHR", "CDG"}, "price", new HashMap<>());
         assertTrue(routes.isEmpty());
     }
 
@@ -331,8 +329,7 @@ class MultiCitySearchTest {
     void searchByDateSortsByPriceWhenOptimizeByPrice() {
         MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
         ArrayList<Route> routes = mcs.searchByDateWithIndex(
-                "JFK", new String[]{"LHR", "CDG"}, DEPARTURE, Map.of("LHR", 3, "CDG", 2), "price",
-                buildDateKeyedIndex());
+                "JFK", new String[]{"LHR", "CDG"}, "price", buildRouteIndex());
         assertTrue(routes.size() > 1);
         for (int i = 0; i < routes.size() - 1; i++) {
             assertTrue(routes.get(i).getCheapestTotalPrice() <= routes.get(i + 1).getCheapestTotalPrice());
@@ -344,8 +341,7 @@ class MultiCitySearchTest {
     void searchByDateSortsByDurationWhenOptimizeByDuration() {
         MultiCitySearch mcs = new MultiCitySearch(null, flightIndex);
         ArrayList<Route> routes = mcs.searchByDateWithIndex(
-                "JFK", new String[]{"LHR", "CDG"}, DEPARTURE, Map.of("LHR", 3, "CDG", 2), "duration",
-                buildDateKeyedIndex());
+                "JFK", new String[]{"LHR", "CDG"}, "duration", buildRouteIndex());
         assertTrue(routes.size() > 1);
         for (int i = 0; i < routes.size() - 1; i++) {
             assertTrue(routes.get(i).getShortestTotalDurationMinutes()

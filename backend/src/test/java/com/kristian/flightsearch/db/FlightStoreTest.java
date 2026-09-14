@@ -11,7 +11,6 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import com.kristian.flightsearch.models.Flight;
 import com.kristian.flightsearch.models.LegQuery;
 
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -62,14 +61,14 @@ class FlightStoreTest {
     @DisplayName("readFlightsForLegs() returns empty map when no legs match")
     void testReadFlightsForLegsReturnsEmptyForNoMatch() {
         HashMap<String, ArrayList<Flight>> result = flightStore.readFlightsForLegs(
-                List.of(new LegQuery("AAA", "BBB", LocalDate.of(2026, 4, 1))));
+                List.of(new LegQuery("AAA", "BBB")));
         assertTrue(result.isEmpty());
     }
 
     @Test
     @DisplayName("getFlightsForRoute() returns empty list when no flights match")
     void testGetFlightsForRouteReturnsEmptyForNoMatch() {
-        ArrayList<Flight> flights = flightStore.getFlightsForRoute("AAA", "BBB", LocalDate.of(2026, 4, 1));
+        ArrayList<Flight> flights = flightStore.getFlightsForRoute("AAA", "BBB");
         assertTrue(flights.isEmpty());
     }
 }
