@@ -120,6 +120,25 @@ public class AirportStore {
         return results.toArray(new Airport[0]);
     }
 
+    public Airport[] findAirportsWithNoFlights() {
+        String sql = "SELECT airport_id, iata_code, icao_code, name, city, country, latitude, longitude, "
+                + "utc_offset, timezone, elevation_ft, max_runway_length_ft "
+                + "FROM airports "
+                + "WHERE iata_code NOT IN (SELECT origin FROM flights UNION SELECT destination FROM flights)";
+
+        ArrayList<Airport> results = new ArrayList<>();
+        try (Connection conn = dataSource.getConnection();
+                Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                results.add(mapRow(rs));
+            }
+        } catch (Exception e) {
+            System.out.println("Error finding airports with no flights: " + e.getMessage());
+        }
+        return results.toArray(new Airport[0]);
+    }
+
     private void ensureLoaded() {
         if (cache != null) return;
 

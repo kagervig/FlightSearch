@@ -14,6 +14,8 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { fetchBoardFlights, type BoardFlight, type BoardResponse } from "@/lib/boardApi";
 import { cn, formatDuration } from "@/lib/utils";
+import type { Topology, GeometryCollection } from "topojson-specification";
+import type { LineString as GeoLineString } from "geojson";
 
 type Tab = "departures" | "arrivals";
 
@@ -26,12 +28,14 @@ const TIME_SLOTS = [
 
 // ── Spider map ────────────────────────────────────────────────────────────────
 
+type WorldTopology = Topology<{ countries: GeometryCollection }>;
+
 // Shared world-topology cache (same pattern as NetworkMap)
-let worldDataCache: unknown = null;
-async function getWorldData(): Promise<unknown> {
+let worldDataCache: WorldTopology | null = null;
+async function getWorldData(): Promise<WorldTopology> {
   if (worldDataCache) return worldDataCache;
   const res = await fetch("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json");
-  worldDataCache = await res.json();
+  worldDataCache = await res.json() as WorldTopology;
   return worldDataCache;
 }
 
@@ -112,6 +116,7 @@ function SpiderMap({ hubCode, hubLat, hubLon, departures, arrivals }: SpiderMapP
       const projection = d3.geoNaturalEarth1()
         .fitExtent([[PAD, PAD], [width - PAD, height - PAD]], allPoints);
 
+      // GeoPath's return type doesn't satisfy D3's .attr("d") overloads for bound GeoJSON datum types
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const pathGen = d3.geoPath().projection(projection) as any;
 
@@ -125,10 +130,8 @@ function SpiderMap({ hubCode, hubLat, hubLon, departures, arrivals }: SpiderMapP
         .attr("fill", oceanFill);
 
       // Land
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const world = worldData as any;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const countries = feature(world, world.objects.countries) as any;
+      const world = worldData;
+      const countries = feature(world, world.objects.countries);
       svg.append("g")
         .selectAll("path")
         .data(countries.features)
@@ -141,8 +144,7 @@ function SpiderMap({ hubCode, hubLat, hubLon, departures, arrivals }: SpiderMapP
       // Route arcs — geoPath interpolates great circles automatically
       for (const a of airports) {
         svg.append("path")
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .datum({ type: "LineString", coordinates: [[hubLon, hubLat], [a.lon, a.lat]] } as any)
+          .datum({ type: "LineString", coordinates: [[hubLon, hubLat], [a.lon, a.lat]] } as GeoLineString)
           .attr("d", pathGen)
           .attr("fill", "none")
           .attr("stroke", "var(--ch-accent)")
