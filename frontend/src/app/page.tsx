@@ -126,6 +126,7 @@ export default function Home() {
             {[
               { label: "How It Works", href: "#how-it-works" },
               { label: "About", href: "#problem" },
+              { label: "Flight Board", href: "/board" },
               { label: "Route Map", href: "/route-map/" },
             ].map(({ label, href }) => (
               <a
