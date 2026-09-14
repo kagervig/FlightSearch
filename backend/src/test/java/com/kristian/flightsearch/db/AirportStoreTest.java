@@ -114,4 +114,15 @@ class AirportStoreTest {
         Airport[] results = airportStore.searchByQuery("zzzzzzzzz", 10);
         assertEquals(0, results.length);
     }
+
+    @Test
+    @DisplayName("findAirportsWithNoFlights() returns empty array when all airports have flights")
+    void testNoAirportsWithoutFlights() {
+        Airport[] orphans = airportStore.findAirportsWithNoFlights();
+        assertEquals(0, orphans.length,
+            "Airports with no flights: " +
+            java.util.Arrays.stream(orphans)
+                .map(Airport::getCode)
+                .collect(java.util.stream.Collectors.joining(", ")));
+    }
 }

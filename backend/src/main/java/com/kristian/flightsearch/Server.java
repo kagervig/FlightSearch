@@ -56,10 +56,12 @@ public class Server {
     private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFKLAX")
 
     // RateLimiter(maxRequests, windowMillis): multicity search is expensive, so 1 req/2 s per IP;
-    // airport search is lightweight but called on every keystroke, so 1 req/1 s; all other
-    // endpoints share a generous 3 req/60 s.
+    // airport search is lightweight but called on every keystroke, so 1 req/1 s; the board
+    // endpoint allows 8 req/60 s since users browse multiple airports in a session; all other
+    // endpoints share 3 req/60 s.
     private static final RateLimiter MULTICITY_LIMITER = new RateLimiter(1, 2_000);
     private static final RateLimiter AIRPORT_SEARCH_LIMITER = new RateLimiter(1, 1_000);
+    private static final RateLimiter BOARD_LIMITER = new RateLimiter(8, 60_000);
     private static final RateLimiter DEFAULT_LIMITER = new RateLimiter(3, 60_000);
 
     public static void main(String[] args) {
@@ -96,6 +98,8 @@ public class Server {
                 limiter = MULTICITY_LIMITER;
             } else if (ctx.path().equals("/api/airports/search")) {
                 limiter = AIRPORT_SEARCH_LIMITER;
+            } else if (ctx.path().equals("/api/flights/board")) {
+                limiter = BOARD_LIMITER;
             } else {
                 limiter = DEFAULT_LIMITER;
             }
@@ -680,9 +684,12 @@ public class Server {
             return;
         }
 
+        Airport hub = airportStore.getAirportByCode(airport);
         var board = flightStore.readFlightsForBoard(airport);
         ctx.json(Map.of(
                 "airport", airport,
+                "hubLat", hub != null ? hub.getLat() : 0.0,
+                "hubLon", hub != null ? hub.getLon() : 0.0,
                 "departures", board.get("departures"),
                 "arrivals", board.get("arrivals")));
     }
