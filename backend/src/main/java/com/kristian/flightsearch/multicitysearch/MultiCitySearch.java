@@ -39,6 +39,7 @@ public class MultiCitySearch {
     final HashMap<String, ArrayList<Flight>> flightIndex;
     // Set of "ORIGINDEST" keys for O(1) direct-flight connectivity checks.
     private final Set<String> connectionSet;
+    private final FlightStore flightStore;
 
     // -------------------------------------------------------------------------
     // Constructors
@@ -48,13 +49,15 @@ public class MultiCitySearch {
     public MultiCitySearch(AirportStore airportStore, HashMap<String, ArrayList<Flight>> flightIndex) {
         this.airportStore  = airportStore;
         this.flightIndex   = flightIndex;
+        this.flightStore   = null;
         this.connectionSet = new HashSet<>(flightIndex.keySet());
     }
 
     /** Production constructor: connectivity derived from the pre-built graph. */
-    public MultiCitySearch(AirportStore airportStore, FlightGraph flightGraph) {
+    public MultiCitySearch(AirportStore airportStore, FlightGraph flightGraph, FlightStore flightStore) {
         this.airportStore = airportStore;
         this.flightIndex  = new HashMap<>();
+        this.flightStore  = flightStore;
         this.connectionSet = new HashSet<>();
         for (AirportVertex v : flightGraph.getVertices()) {
             for (Edge e : v.getEdges()) {
@@ -170,18 +173,14 @@ public class MultiCitySearch {
     // -------------------------------------------------------------------------
 
     /**
-     * Searches for valid multi-city routes for specific departure dates,
-     * sorted by the given optimizeBy criterion.
+     * Searches for valid multi-city routes, fetching flights per-request from the database.
      *
-     * @param homeAirport    The origin/return airport code
-     * @param destinations   Destination airport codes to visit
-     * @param departureDate  Date of the first leg
-     * @param daysAtAirport  Map from airport code to number of full days spent there
-     * @param optimizeBy     "price" or "duration"
-     * @param flightStore    Used to fetch date-specific flights from the database
+     * @param homeAirport  The origin/return airport code
+     * @param destinations Destination airport codes to visit
+     * @param optimizeBy   "price" or "duration"
+     * @param flightStore  Used to fetch flights from the database
      */
     public ArrayList<Route> searchByDate(String homeAirport, String[] destinations,
-            LocalDate departureDate, Map<String, Integer> daysAtAirport,
             String optimizeBy, FlightStore flightStore) {
 
         ArrayList<String[]> validPerms = filterValidPermutations(destinations, homeAirport);
@@ -189,27 +188,25 @@ public class MultiCitySearch {
 
         LinkedHashSet<LegQuery> uniqueLegs = new LinkedHashSet<>();
         for (String[] perm : validPerms) {
-            LocalDate[] dates = computeLegDates(perm, departureDate, daysAtAirport);
             for (int i = 0; i < perm.length - 1; i++) {
-                uniqueLegs.add(new LegQuery(perm[i], perm[i + 1], dates[i]));
+                uniqueLegs.add(new LegQuery(perm[i], perm[i + 1]));
             }
         }
 
-        HashMap<String, ArrayList<Flight>> dateIndex = flightStore.readFlightsForLegs(new ArrayList<>(uniqueLegs));
-        return buildRoutesFromDateIndex(validPerms, departureDate, daysAtAirport, dateIndex, optimizeBy);
+        HashMap<String, ArrayList<Flight>> routeIndex = flightStore.readFlightsForLegs(new ArrayList<>(uniqueLegs));
+        return buildRoutesFromIndex(validPerms, routeIndex, optimizeBy);
     }
 
     /**
-     * Same as searchByDate but accepts a pre-built date-keyed flight index instead of
+     * Same as searchByDate but accepts a pre-built route-keyed flight index instead of
      * querying the database. Used in tests.
      */
     ArrayList<Route> searchByDateWithIndex(String homeAirport, String[] destinations,
-            LocalDate departureDate, Map<String, Integer> daysAtAirport,
-            String optimizeBy, HashMap<String, ArrayList<Flight>> dateIndex) {
+            String optimizeBy, HashMap<String, ArrayList<Flight>> routeIndex) {
 
         ArrayList<String[]> validPerms = filterValidPermutations(destinations, homeAirport);
         if (validPerms.isEmpty()) return new ArrayList<>();
-        return buildRoutesFromDateIndex(validPerms, departureDate, daysAtAirport, dateIndex, optimizeBy);
+        return buildRoutesFromIndex(validPerms, routeIndex, optimizeBy);
     }
 
     // -------------------------------------------------------------------------
@@ -236,7 +233,22 @@ public class MultiCitySearch {
         ArrayList<String[]> allPerms = flightCombinations(destinations, homeAirport);
         List<ExpandedPerm> expandedPerms = expandPermsWithConnections(allPerms, flightGraph);
         if (expandedPerms.isEmpty()) return new ArrayList<>();
-        return buildConnectionRoutes(expandedPerms, optimizeBy);
+
+        HashMap<String, ArrayList<Flight>> flightData;
+        if (flightStore != null) {
+            LinkedHashSet<LegQuery> uniqueLegs = new LinkedHashSet<>();
+            for (ExpandedPerm ep : expandedPerms) {
+                String[] exp = ep.expandedAirports();
+                for (int i = 0; i < exp.length - 1; i++) {
+                    uniqueLegs.add(new LegQuery(exp[i], exp[i + 1]));
+                }
+            }
+            flightData = flightStore.readFlightsForLegs(new ArrayList<>(uniqueLegs));
+        } else {
+            flightData = this.flightIndex;
+        }
+
+        return buildConnectionRoutes(expandedPerms, flightData, optimizeBy);
     }
 
     // Bundles an intended permutation with its Dijkstra-expanded airport list and
@@ -360,7 +372,7 @@ public class MultiCitySearch {
     }
 
     private ArrayList<Route> buildConnectionRoutes(
-            List<ExpandedPerm> expandedPerms, String optimizeBy) {
+            List<ExpandedPerm> expandedPerms, HashMap<String, ArrayList<Flight>> flightData, String optimizeBy) {
 
         ArrayList<Route> validRoutes = new ArrayList<>();
 
@@ -385,17 +397,17 @@ public class MultiCitySearch {
                 if (!isConnectionSubLeg) {
                     ArrayList<Flight> flights = pendingOutbounds != null
                             ? pendingOutbounds
-                            : flightIndex.getOrDefault(exp[i] + exp[i + 1], new ArrayList<>());
+                            : flightData.getOrDefault(exp[i] + exp[i + 1], new ArrayList<>());
                     if (flights.isEmpty()) { routeValid = false; break; }
                     subLegFlights.add(flights);
                     pendingOutbounds = null;
                 } else {
                     ArrayList<Flight> inbounds = pendingOutbounds != null
                             ? pendingOutbounds
-                            : flightIndex.getOrDefault(exp[i] + exp[i + 1], new ArrayList<>());
+                            : flightData.getOrDefault(exp[i] + exp[i + 1], new ArrayList<>());
                     if (inbounds.isEmpty()) { routeValid = false; break; }
 
-                    ArrayList<Flight> outbounds = flightIndex.getOrDefault(
+                    ArrayList<Flight> outbounds = flightData.getOrDefault(
                             exp[i + 1] + exp[i + 2], new ArrayList<>());
 
                     ConnectionResult validated = validateConnectionPoint(inbounds, outbounds);
@@ -462,21 +474,18 @@ public class MultiCitySearch {
         return true;
     }
 
-    private static ArrayList<Route> buildRoutesFromDateIndex(ArrayList<String[]> perms,
-            LocalDate departureDate, Map<String, Integer> daysAtAirport,
-            HashMap<String, ArrayList<Flight>> dateIndex,
-            String optimizeBy) {
+    private static ArrayList<Route> buildRoutesFromIndex(ArrayList<String[]> perms,
+            HashMap<String, ArrayList<Flight>> routeIndex, String optimizeBy) {
 
         ArrayList<Route> validRoutes = new ArrayList<>();
 
         for (String[] perm : perms) {
-            LocalDate[] dates = computeLegDates(perm, departureDate, daysAtAirport);
             ArrayList<ArrayList<Flight>> routeFlights = new ArrayList<>();
             boolean routeValid = true;
 
             for (int i = 0; i < perm.length - 1; i++) {
-                String key = perm[i] + perm[i + 1] + dates[i].toString();
-                ArrayList<Flight> legFlights = dateIndex.get(key);
+                String key = perm[i] + perm[i + 1];
+                ArrayList<Flight> legFlights = routeIndex.get(key);
                 if (legFlights == null || legFlights.isEmpty()) {
                     routeValid = false;
                     break;
