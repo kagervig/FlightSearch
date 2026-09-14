@@ -9,7 +9,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.kristian.flightsearch.models.Flight;
+import com.kristian.flightsearch.models.LegQuery;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,21 +40,37 @@ class FlightStoreTest {
     }
 
     @Test
-    @DisplayName("readFlights() returns a non-empty map when flights exist")
-    void testReadFlightsReturnsData() {
-        HashMap<String, Flight> flights = flightStore.readFlights();
-        assertTrue(flights.size() > 0);
+    @DisplayName("getConnectionMap() returns a non-empty list")
+    void testGetConnectionMapReturnsData() {
+        List<String[]> connections = flightStore.getConnectionMap();
+        assertFalse(connections.isEmpty());
     }
 
     @Test
-    @DisplayName("readFlights() returns flights with non-null origin and destination")
-    void testReadFlightsHaveAirports() {
-        HashMap<String, Flight> flights = flightStore.readFlights();
-        assumeTrue(!flights.isEmpty(), "No flights in database — skipping test");
+    @DisplayName("getConnectionMap() returns entries with two non-null airport codes each")
+    void testGetConnectionMapHasValidCodes() {
+        List<String[]> connections = flightStore.getConnectionMap();
+        assumeTrue(!connections.isEmpty(), "No connections in database — skipping test");
 
-        Flight sample = flights.values().iterator().next();
-        assertNotNull(sample.getOrigin());
-        assertNotNull(sample.getDestination());
+        String[] first = connections.get(0);
+        assertEquals(2, first.length);
+        assertNotNull(first[0]);
+        assertNotNull(first[1]);
+    }
+
+    @Test
+    @DisplayName("readFlightsForLegs() returns empty map when no legs match")
+    void testReadFlightsForLegsReturnsEmptyForNoMatch() {
+        HashMap<String, ArrayList<Flight>> result = flightStore.readFlightsForLegs(
+                List.of(new LegQuery("AAA", "BBB")));
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    @DisplayName("getFlightsForRoute() returns empty list when no flights match")
+    void testGetFlightsForRouteReturnsEmptyForNoMatch() {
+        ArrayList<Flight> flights = flightStore.getFlightsForRoute("AAA", "BBB");
+        assertTrue(flights.isEmpty());
     }
 
     @Test
