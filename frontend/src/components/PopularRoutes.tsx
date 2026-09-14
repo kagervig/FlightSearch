@@ -10,8 +10,11 @@ import { ArrowRight } from "lucide-react";
 import { POPULAR_ROUTES, type PopularRoute } from "@/data/popular-routes";
 import { RouteMap } from "@/components/RouteMap";
 
+// 30 days expressed in milliseconds — used to default the departure date to ~a month from now
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
 function buildRouteUrl(route: PopularRoute): string {
-  const date = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const date = new Date(Date.now() + THIRTY_DAYS_MS).toISOString().split("T")[0];
   const params = new URLSearchParams({
     from: route.values.homeAirport.code,
     destinations: route.values.destinations.map((d) => d.code).join(","),
