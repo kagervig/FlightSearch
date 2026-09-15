@@ -36,13 +36,16 @@ public class Server {
     // This is efficient because we don't reload data for every request
     private static FlightGraph flightNetwork; // Graph structure: airports connected by flights
     private static AirportStore airportStore; // Provides airport lookup by code
+    private static FlightStore flightStore;   // Provides direct DB queries (e.g., board data)
     private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFKLAX")
 
     // RateLimiter(maxRequests, windowMillis): multicity search is expensive, so 1 req/2 s per IP;
-    // airport search is lightweight but called on every keystroke, so 1 req/1 s; all other
-    // endpoints share a generous 3 req/60 s.
+    // airport search is lightweight but called on every keystroke, so 1 req/1 s; the board
+    // endpoint allows 8 req/60 s since users browse multiple airports in a session; all other
+    // endpoints share 3 req/60 s.
     private static final RateLimiter MULTICITY_LIMITER = new RateLimiter(1, 2_000);
     private static final RateLimiter AIRPORT_SEARCH_LIMITER = new RateLimiter(1, 1_000);
+    private static final RateLimiter BOARD_LIMITER = new RateLimiter(8, 60_000);
     private static final RateLimiter DEFAULT_LIMITER = new RateLimiter(3, 60_000);
 
     public static void main(String[] args) {
@@ -82,6 +85,8 @@ public class Server {
                 limiter = MULTICITY_LIMITER;
             } else if (ctx.path().equals("/api/airports/search")) {
                 limiter = AIRPORT_SEARCH_LIMITER;
+            } else if (ctx.path().equals("/api/flights/board")) {
+                limiter = BOARD_LIMITER;
             } else {
                 limiter = DEFAULT_LIMITER;
             }
@@ -126,6 +131,9 @@ public class Server {
         // Returns the top 20 cheapest flights departing from the given airport, one per destination.
         app.get("/api/routes/search", Server::searchRoutes);
 
+        // Departures and arrivals board for a given airport
+        // Example: /api/flights/board?airport=LHR
+        app.get("/api/flights/board", Server::getBoardFlights);
         // Step 5: Start the server
         app.start(port);
         // System.out.println("Server started on port " + port);
@@ -160,7 +168,7 @@ public class Server {
 
         flightNetwork = FlightGraph.initalizeFlightGraph(airports);
 
-        FlightStore flightStore = new FlightStore(DatabaseManager.getDataSource(), airportStore);
+        flightStore = new FlightStore(DatabaseManager.getDataSource(), airportStore);
         HashMap<String, Flight> flightList = flightStore.readFlights();
 
         flightIndex = FlightGenerator.flightMapper(flightList);
@@ -658,5 +666,34 @@ public class Server {
         }
 
         ctx.json(Map.of("from", from, "routes", routeData));
+    }
+
+    /**
+     * GET /api/flights/board?airport=XXX
+     * Returns all departures and arrivals for the given airport.
+     */
+    private static void getBoardFlights(Context ctx) {
+        String airport = ctx.queryParam("airport");
+
+        if (airport == null || airport.isBlank()) {
+            ctx.status(400).json(Map.of("error", "Missing 'airport' parameter"));
+            return;
+        }
+
+        airport = airport.trim().toUpperCase();
+
+        if (!airportStore.isValidAirportCode(airport)) {
+            ctx.status(400).json(Map.of("error", "Airport not supported: " + airport));
+            return;
+        }
+
+        Airport hub = airportStore.getAirportByCode(airport);
+        var board = flightStore.readFlightsForBoard(airport);
+        ctx.json(Map.of(
+                "airport", airport,
+                "hubLat", hub != null ? hub.getLat() : 0.0,
+                "hubLon", hub != null ? hub.getLon() : 0.0,
+                "departures", board.get("departures"),
+                "arrivals", board.get("arrivals")));
     }
 }
