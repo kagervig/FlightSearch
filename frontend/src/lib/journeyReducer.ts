@@ -5,6 +5,7 @@ export interface JourneyHop {
   code: string;
   nights: number;
   price: number;
+  distanceKm?: number;
 }
 
 export interface JourneyState {
@@ -13,8 +14,8 @@ export interface JourneyState {
 }
 
 export type JourneyAction =
-  | { type: "APPEND_HOP"; code: string; price: number }
-  | { type: "FLY_HOME"; price: number }
+  | { type: "APPEND_HOP"; code: string; price: number; distanceKm?: number }
+  | { type: "FLY_HOME"; price: number; distanceKm?: number }
   | { type: "ONE_WAY" }
   | { type: "RESET" }
   | { type: "SET_HOME"; code: string }
@@ -42,7 +43,7 @@ export function journeyReducer(
         ...state,
         journey: [
           ...state.journey,
-          { code: action.code, nights: 1, price: action.price },
+          { code: action.code, nights: 1, price: action.price, distanceKm: action.distanceKm },
         ],
       };
     }
@@ -57,7 +58,7 @@ export function journeyReducer(
         ...state,
         journey: [
           ...state.journey,
-          { code: home, nights: 0, price: action.price },
+          { code: home, nights: 0, price: action.price, distanceKm: action.distanceKm },
         ],
         closed: true,
       };
@@ -92,6 +93,7 @@ export interface DerivedJourney {
   hopCount: number;
   visitedSet: Set<string>;
   runningTotal: number;
+  cumulativeDistanceKm: number;
   daysAway: number;
   backHomeDate: Date;
   atCap: boolean;
@@ -104,6 +106,7 @@ export function deriveJourney(
   const hopCount = state.journey.length - 1;
   const visitedSet = new Set(state.journey.map((h) => h.code));
   const runningTotal = state.journey.reduce((sum, h) => sum + h.price, 0);
+  const cumulativeDistanceKm = state.journey.reduce((sum, h) => sum + (h.distanceKm ?? 0), 0);
   const totalNights = state.journey.reduce((sum, h) => sum + h.nights, 0);
   // each flight leg takes one day of travel
   const daysAway = totalNights + hopCount;
@@ -111,5 +114,5 @@ export function deriveJourney(
   backHomeDate.setDate(backHomeDate.getDate() + daysAway);
   const atCap = hopCount >= MAX_HOPS;
 
-  return { hopCount, visitedSet, runningTotal, daysAway, backHomeDate, atCap };
+  return { hopCount, visitedSet, runningTotal, cumulativeDistanceKm, daysAway, backHomeDate, atCap };
 }

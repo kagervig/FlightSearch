@@ -252,4 +252,17 @@ describe("deriveJourney", () => {
     s = journeyReducer(s, { type: "APPEND_HOP", code: "CDG", price: 100 });
     expect(deriveJourney(s, departure).atCap).toBe(false);
   });
+
+  it("cumulativeDistanceKm sums distanceKm from all hops", () => {
+    let s = makeState();
+    s = journeyReducer(s, { type: "APPEND_HOP", code: "CDG", price: 120, distanceKm: 340 });
+    s = journeyReducer(s, { type: "APPEND_HOP", code: "IST", price: 90, distanceKm: 2200 });
+    expect(deriveJourney(s, departure).cumulativeDistanceKm).toBe(2540);
+  });
+
+  it("cumulativeDistanceKm is 0 when no distanceKm provided", () => {
+    let s = makeState();
+    s = journeyReducer(s, { type: "APPEND_HOP", code: "CDG", price: 120 });
+    expect(deriveJourney(s, departure).cumulativeDistanceKm).toBe(0);
+  });
 });

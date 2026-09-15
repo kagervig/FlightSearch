@@ -107,10 +107,16 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false, in
       d3Ref.current = d3;
 
       const journeyKey = journey.join(",");
+      const prevKey = hasAnimated.current ?? "";
       const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      const shouldAnimate = hasAnimated.current !== journeyKey && !prefersReducedMotion;
+      const changed = journeyKey !== prevKey;
+      // Only animate new legs: if the new key is a strict extension of the previous one,
+      // skip legs that already animated.
+      const isExtension = changed && prevKey !== "" && journeyKey.startsWith(prevKey + ",");
+      const firstNewLeg = isExtension ? Math.max(0, prevKey.split(",").length - 1) : 0;
+      const shouldAnimate = changed && !prefersReducedMotion;
       // Mark before any async work so a concurrent re-run skips the animation
-      if (shouldAnimate) hasAnimated.current = journeyKey;
+      if (changed) hasAnimated.current = journeyKey;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const world = worldData as any;
@@ -137,8 +143,23 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false, in
       // All drawable content goes in this group — the zoom transform is applied here
       const g = svg.append("g");
 
+      const airportLookup = new Map(airports.map((a) => [a.code, a]));
+
+      // Rotate the projection so its centre sits on the journey's mean longitude.
+      // This moves the antimeridian (±180°) away from the route, preventing D3
+      // from clipping Pacific-crossing legs into two disconnected segments.
+      const journeyLons = [...new Set(journey)]
+        .map((code) => airportLookup.get(code))
+        .filter(Boolean)
+        .map((a) => a!.lng);
+      const meanLon =
+        journeyLons.length > 0
+          ? journeyLons.reduce((s, l) => s + l, 0) / journeyLons.length
+          : 0;
+
       const projection = d3
         .geoNaturalEarth1()
+        .rotate([-meanLon, 0])
         .scale(width / 6.28)
         .translate([width / 2, height / 2]);
 
@@ -157,8 +178,6 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false, in
         .attr("fill", "#f1f5f9")
         .attr("stroke", "#e2e8f0")
         .attr("stroke-width", COUNTRY_BORDER_STROKE_WIDTH);
-
-      const airportLookup = new Map(airports.map((a) => [a.code, a]));
 
       // Great-circle arc per leg — classed so the zoom handler can select them
       for (let i = 0; i < journey.length - 1; i++) {
@@ -189,12 +208,12 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false, in
           .attr("stroke-dasharray", totalLength)
           .attr("stroke-dashoffset", shouldAnimate ? totalLength : 0);
 
-        if (shouldAnimate) {
+        if (shouldAnimate && i >= firstNewLeg) {
           pathEl
             .transition()
-            .duration(1000)
-            .delay(i * 280)
-            .ease(d3.easeQuadOut)
+            .duration(900)
+            .delay((i - firstNewLeg) * 240)
+            .ease(d3.easeCubicOut)
             .attr("stroke-dashoffset", 0);
         }
       }
