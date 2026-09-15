@@ -7,14 +7,23 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import com.kristian.flightsearch.datagenerator.FlightGenerator;
+import com.kristian.flightsearch.flightgraph.FlightGraph;
 import com.kristian.flightsearch.models.Airport;
 import com.kristian.flightsearch.models.Flight;
 import com.kristian.flightsearch.models.FlightResult;
+import com.kristian.flightsearch.models.FlyHomeResult;
+import com.kristian.flightsearch.models.RouteSearchResult;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 @DisplayName("RouteStore tests")
@@ -22,12 +31,22 @@ class RouteStoreTest {
 
     private static boolean dbAvailable = false;
     private static Connection conn;
+    private static FlightGraph graph;
 
     @BeforeAll
     static void setUpDatabase() {
         try {
             DatabaseManager.initialize();
             conn = DatabaseManager.getDataSource().getConnection();
+
+            AirportStore airportStore = new AirportStore(DatabaseManager.getDataSource());
+            Airport[] airports = airportStore.getAirports();
+            graph = FlightGraph.initalizeFlightGraph(airports);
+            FlightStore flightStore = new FlightStore(DatabaseManager.getDataSource(), airportStore);
+            HashMap<String, Flight> flightList = flightStore.readFlights();
+            HashMap<String, ArrayList<Flight>> flightIndex = FlightGenerator.flightMapper(flightList);
+            FlightGraph.addFlightEdges(graph, flightIndex);
+
             dbAvailable = true;
         } catch (Exception e) {
             dbAvailable = false;
@@ -194,5 +213,140 @@ class RouteStoreTest {
     void testConvertToFlightUnknownDestination() {
         FlightResult fr = new FlightResult("XX 0000", "LHR", "ZZZ", 100, "XX", LocalTime.of(10, 0));
         assertNull(RouteStore.convertToFlight(fr, conn));
+    }
+
+    // --- searchFlights (enriched, with exclude) ---
+
+    @Test
+    @DisplayName("searchFlights() results include a non-null destination city")
+    void testSearchFlightsCityName() {
+        List<RouteSearchResult> results = RouteStore.searchFlights("LHR", List.of(), conn);
+        assumeTrue(!results.isEmpty(), "No flights from LHR — skipping test");
+        for (RouteSearchResult r : results) {
+            assertNotNull(r.destinationCity(), "destinationCity should not be null");
+            assertFalse(r.destinationCity().isBlank(), "destinationCity should not be blank");
+        }
+    }
+
+    @Test
+    @DisplayName("searchFlights() results have distanceKm > 0")
+    void testSearchFlightsDistance() {
+        List<RouteSearchResult> results = RouteStore.searchFlights("LHR", List.of(), conn);
+        assumeTrue(!results.isEmpty(), "No flights from LHR — skipping test");
+        for (RouteSearchResult r : results) {
+            assertTrue(r.distanceKm() > 0, "distanceKm should be positive");
+        }
+    }
+
+    @Test
+    @DisplayName("searchFlights() results have durationMinutes > 0")
+    void testSearchFlightsDuration() {
+        List<RouteSearchResult> results = RouteStore.searchFlights("LHR", List.of(), conn);
+        assumeTrue(!results.isEmpty(), "No flights from LHR — skipping test");
+        for (RouteSearchResult r : results) {
+            assertTrue(r.durationMinutes() > 0, "durationMinutes should be positive");
+        }
+    }
+
+    @Test
+    @DisplayName("searchFlights() with exclude list omits excluded destinations")
+    void testSearchFlightsExclude() {
+        List<RouteSearchResult> all = RouteStore.searchFlights("LHR", List.of(), conn);
+        assumeTrue(all.size() >= 2, "Need at least 2 results to test exclusion");
+        String excluded = all.get(0).destination();
+        List<RouteSearchResult> filtered = RouteStore.searchFlights("LHR", List.of(excluded), conn);
+        for (RouteSearchResult r : filtered) {
+            assertNotEquals(excluded, r.destination(), "Excluded destination appeared in results");
+        }
+    }
+
+    @Test
+    @DisplayName("searchFlights() with empty exclude list returns at most 20 results sorted by price")
+    void testSearchFlightsEmptyExclude() {
+        List<RouteSearchResult> results = RouteStore.searchFlights("LHR", List.of(), conn);
+        assertTrue(results.size() <= 20);
+        for (int i = 1; i < results.size(); i++) {
+            assertTrue(results.get(i).price() >= results.get(i - 1).price(),
+                "Results not sorted by price at index " + i);
+        }
+    }
+
+    @Test
+    @DisplayName("searchFlights() returns empty list for unknown origin")
+    void testSearchFlightsUnknownOrigin() {
+        List<RouteSearchResult> results = RouteStore.searchFlights("ZZZ", List.of(), conn);
+        assertTrue(results.isEmpty());
+    }
+
+    // --- routeHome ---
+
+    @Test
+    @DisplayName("routeHome() returns direct=true when a direct flight exists")
+    void testRouteHomeDirect() {
+        List<RouteSearchResult> outbound = RouteStore.searchFlights("LHR", List.of(), conn);
+        assumeTrue(!outbound.isEmpty(), "No flights from LHR — skipping test");
+        String stopover = outbound.get(0).destination();
+
+        // Find a stopover that has a direct flight back to LHR
+        String withDirect = null;
+        for (RouteSearchResult r : outbound) {
+            List<RouteSearchResult> back = RouteStore.searchFlights(r.destination(), List.of(), conn);
+            boolean hasDirectToLHR = back.stream().anyMatch(b -> b.destination().equals("LHR"));
+            if (hasDirectToLHR) {
+                withDirect = r.destination();
+                break;
+            }
+        }
+        assumeTrue(withDirect != null, "No LHR outbound destination has a direct flight back — skipping test");
+
+        FlyHomeResult result = RouteStore.routeHome(withDirect, "LHR", graph, conn);
+        assertTrue(result.direct());
+        assertEquals(1, result.legs().size());
+        assertEquals(withDirect, result.legs().get(0).origin());
+        assertEquals("LHR", result.legs().get(0).destination());
+        assertTrue(result.totalPrice() > 0);
+    }
+
+    @Test
+    @DisplayName("routeHome() returns empty legs when no path exists in the graph")
+    void testRouteHomeNoPath() {
+        FlyHomeResult result = RouteStore.routeHome("ZZZ", "YYY", graph, conn);
+        assertFalse(result.direct());
+        assertTrue(result.legs().isEmpty());
+        assertEquals(0, result.totalPrice());
+    }
+
+    @Test
+    @DisplayName("routeHome() returns a multi-leg Dijkstra route when no direct flight exists")
+    void testRouteHomeDijkstraFallback() {
+        // Find an airport that has no direct flight to LHR by checking the flights table
+        String noDirectOrigin = findOriginWithNoDirectFlight("LHR", conn);
+        assumeTrue(noDirectOrigin != null, "Every airport has a direct flight to LHR — skipping Dijkstra fallback test");
+
+        FlyHomeResult result = RouteStore.routeHome(noDirectOrigin, "LHR", graph, conn);
+        assertFalse(result.direct());
+        assertFalse(result.legs().isEmpty(), "Expected Dijkstra to find a multi-leg route");
+        assertTrue(result.totalPrice() > 0);
+        assertEquals("LHR", result.legs().get(result.legs().size() - 1).destination());
+    }
+
+    /** Returns an IATA code that appears in the graph but has no direct flight to the given home airport, or null if none found. */
+    private static String findOriginWithNoDirectFlight(String home, Connection conn) {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT DISTINCT a.iata_code" +
+                " FROM airports a" +
+                " WHERE a.iata_code != ?" +
+                "   AND a.iata_code NOT IN (" +
+                "       SELECT origin FROM flights WHERE destination = ?" +
+                "   )" +
+                " LIMIT 1")) {
+            ps.setString(1, home);
+            ps.setString(2, home);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) return rs.getString("iata_code");
+        } catch (SQLException e) {
+            // fall through
+        }
+        return null;
     }
 }

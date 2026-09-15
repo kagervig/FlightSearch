@@ -124,7 +124,11 @@ public class Server {
         app.get("/api/graph/connections", Server::getGraphConnections);
 
         // Returns the top 20 cheapest flights departing from the given airport, one per destination.
+        // Optional: exclude=A,B,C omits those destinations (visited-city exclusion for route building).
         app.get("/api/routes/search", Server::searchRoutes);
+
+        // Returns cheapest route home — direct if possible, Dijkstra multi-leg otherwise.
+        app.get("/api/routes/home", Server::getFlightHome);
 
         // Step 5: Start the server
         app.start(port);
@@ -170,15 +174,32 @@ public class Server {
         // System.out.println("Loaded " + airports.length + " airports and " + flightList.size() + " flights");
     }
 
-    private static void searchRoutes(Context ctx){
+    private static void searchRoutes(Context ctx) {
         String origin = ctx.queryParam("origin");
         if (origin == null) {
             ctx.status(400).json(Map.of("error", "origin is required"));
             return;
         }
+        String excludeParam = ctx.queryParam("exclude");
+        List<String> exclude = (excludeParam != null && !excludeParam.isBlank())
+            ? List.of(excludeParam.split(","))
+            : List.of();
         try (Connection conn = DatabaseManager.getDataSource().getConnection()) {
-            List<FlightResult> results = RouteStore.findFlights(origin, conn);
-            ctx.json(results);
+            ctx.json(RouteStore.searchFlights(origin, exclude, conn));
+        } catch (SQLException e) {
+            ctx.status(500).json(Map.of("error", e.getMessage()));
+        }
+    }
+
+    private static void getFlightHome(Context ctx) {
+        String from = ctx.queryParam("from");
+        String home = ctx.queryParam("home");
+        if (from == null || home == null) {
+            ctx.status(400).json(Map.of("error", "from and home are required"));
+            return;
+        }
+        try (Connection conn = DatabaseManager.getDataSource().getConnection()) {
+            ctx.json(RouteStore.routeHome(from, home, flightNetwork, conn));
         } catch (SQLException e) {
             ctx.status(500).json(Map.of("error", e.getMessage()));
         }
