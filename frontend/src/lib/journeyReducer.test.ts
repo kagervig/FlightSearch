@@ -4,6 +4,7 @@ import {
   deriveJourney,
   initialState,
   type JourneyState,
+  type FlightLeg,
 } from "./journeyReducer";
 
 const HOME = "LHR";
@@ -72,6 +73,18 @@ describe("APPEND_HOP", () => {
     expect(s.journey).toHaveLength(11); // home + 10 hops
     const next = journeyReducer(s, { type: "APPEND_HOP", code: "K", price: 100 });
     expect(next.journey).toHaveLength(11);
+  });
+
+  it("stores leg details when provided", () => {
+    const leg: FlightLeg = {
+      flightNumber: "BA223",
+      airline: "British Airways",
+      departureTime: "09:15:00",
+      durationMinutes: 135,
+      cityName: "Paris",
+    };
+    const s = journeyReducer(makeState(), { type: "APPEND_HOP", code: "CDG", price: 120, leg });
+    expect(s.journey[1].leg).toEqual(leg);
   });
 
   it("defaults new hops to 1 night", () => {

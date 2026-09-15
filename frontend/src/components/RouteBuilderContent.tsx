@@ -16,6 +16,7 @@ import { useReducer, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Plane, AlertCircle, ArrowRight, RotateCcw } from "lucide-react";
 import { journeyReducer, initialState, deriveJourney } from "@/lib/journeyReducer";
+import type { FlightLeg } from "@/lib/journeyReducer";
 import { AirportAutocomplete } from "@/components/AirportAutocomplete";
 import { RouteMap } from "@/components/RouteMap";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -65,6 +66,20 @@ function fmtDuration(minutes: number): string {
 
 function fmtDate(d: Date): string {
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
+/** Trims Java LocalTime "HH:MM:SS" to "HH:MM". */
+function fmtTime(timeStr: string): string {
+  return timeStr.slice(0, 5);
+}
+
+/** Returns the arrival time string given a departure time and duration in minutes. */
+function arrivalTime(departureTime: string, durationMinutes: number): string {
+  const [h, m] = departureTime.split(":").map(Number);
+  const total = h * 60 + m + durationMinutes;
+  const arrH = Math.floor(total / 60) % 24;
+  const arrM = total % 60;
+  return `${String(arrH).padStart(2, "0")}:${String(arrM).padStart(2, "0")}`;
 }
 
 // --- Main component ---
@@ -138,6 +153,11 @@ export function RouteBuilderContent() {
     }));
   }, [airportsQuery.data]);
 
+  const cityByCode = useMemo(() => {
+    if (!airportsQuery.data) return new Map<string, string>();
+    return new Map(airportsQuery.data.map((a) => [a.code, a.city]));
+  }, [airportsQuery.data]);
+
   const journeyCodes = journey.map((h) => h.code);
 
   // Hops that get a nights stepper (all visited cities after home, excluding the
@@ -170,11 +190,19 @@ export function RouteBuilderContent() {
   }
 
   function handlePickFlight(flight: RouteSearchResult) {
+    const leg: FlightLeg = {
+      flightNumber: flight.flightNumber,
+      airline: flight.airline,
+      departureTime: flight.departureTime,
+      durationMinutes: flight.durationMinutes,
+      cityName: flight.destinationCity,
+    };
     dispatch({
       type: "APPEND_HOP",
       code: flight.destination,
       price: flight.price,
       distanceKm: flight.distanceKm,
+      leg,
     });
   }
 
@@ -282,17 +310,20 @@ export function RouteBuilderContent() {
                   </button>
                 </div>
 
-                {/* Breadcrumb */}
-                <p className="text-sm tracking-wide leading-relaxed text-foreground">
+                {/* Breadcrumb — flex-wrap so long chains don't overflow the panel */}
+                <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5 mt-1">
                   {journey.map((h, i) => (
-                    <span key={`${h.code}-${i}`}>
-                      {i > 0 && <span className="text-muted mx-1">›</span>}
-                      <span className={cn(h.code === currentCode && !closed && "text-primary font-semibold")}>
+                    <span key={`${h.code}-${i}`} className="flex items-center gap-x-1">
+                      {i > 0 && <span className="text-muted text-xs">›</span>}
+                      <span className={cn(
+                        "text-sm tracking-wide",
+                        h.code === currentCode && !closed && "text-primary font-semibold"
+                      )}>
                         {h.code}
                       </span>
                     </span>
                   ))}
-                </p>
+                </div>
 
                 {/* 2×2 stat grid */}
                 <div className="grid grid-cols-2 gap-x-6 gap-y-3 mt-3">
@@ -382,20 +413,36 @@ export function RouteBuilderContent() {
                   <>
                     {journey.slice(1).map((hop, i) => {
                       const from = journey[i];
+                      const fromCity = cityByCode.get(from.code);
+                      const toCity = hop.leg?.cityName ?? cityByCode.get(hop.code);
                       return (
                         <div
                           key={`${from.code}-${hop.code}-${i}`}
-                          className="flex items-center justify-between px-4 py-3 border-b text-sm"
+                          className="px-4 py-3 border-b"
                           style={{ borderColor: "var(--border)" }}
                         >
-                          <div>
-                            <p className="font-medium text-foreground">
-                              {from.code} → {hop.code}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-foreground tracking-wide">
+                                {from.code} → {hop.code}
+                              </p>
+                              {(fromCity || toCity) && (
+                                <p className="text-xs text-muted mt-0.5">
+                                  {fromCity ?? from.code} → {toCity ?? hop.code}
+                                </p>
+                              )}
+                              {hop.leg && (
+                                <p className="text-xs text-muted mt-0.5">
+                                  {hop.leg.airline} {hop.leg.flightNumber}
+                                  {" · "}
+                                  {fmtTime(hop.leg.departureTime)} → {arrivalTime(hop.leg.departureTime, hop.leg.durationMinutes)}
+                                </p>
+                              )}
+                            </div>
+                            <p className="text-sm font-semibold text-foreground shrink-0">
+                              {hop.price > 0 ? fmtPrice(hop.price) : "—"}
                             </p>
                           </div>
-                          <p className="text-sm font-medium text-foreground shrink-0 ml-4">
-                            {hop.price > 0 ? fmtPrice(hop.price) : "—"}
-                          </p>
                         </div>
                       );
                     })}

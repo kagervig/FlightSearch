@@ -166,7 +166,11 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false, in
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const pathGen = d3.geoPath().projection(projection) as any;
 
-      // Country polygons
+      // Country polygons — colours adapt to theme so borders are visible in both modes
+      const isDarkMode = document.documentElement.classList.contains("dark");
+      const countryFill = isDarkMode ? "#1e293b" : "#dde3ea";
+      const countryStroke = isDarkMode ? "#334155" : "#94a3b8";
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const countries = feature(world, world.objects.countries) as any;
       g.append("g")
@@ -175,8 +179,8 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false, in
         .join("path")
         .attr("class", "country-border")
         .attr("d", pathGen)
-        .attr("fill", "#f1f5f9")
-        .attr("stroke", "#e2e8f0")
+        .attr("fill", countryFill)
+        .attr("stroke", countryStroke)
         .attr("stroke-width", COUNTRY_BORDER_STROKE_WIDTH);
 
       // Great-circle arc per leg — classed so the zoom handler can select them

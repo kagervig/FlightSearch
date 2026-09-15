@@ -1,11 +1,22 @@
 /** Maximum number of city hops after the home airport. */
 const MAX_HOPS = 10;
 
+/** Flight details for the leg that brought the traveller to this city. */
+export interface FlightLeg {
+  flightNumber: string;
+  airline: string;
+  /** Java LocalTime serialises as "HH:MM:SS" */
+  departureTime: string;
+  durationMinutes: number;
+  cityName: string;
+}
+
 export interface JourneyHop {
   code: string;
   nights: number;
   price: number;
   distanceKm?: number;
+  leg?: FlightLeg;
 }
 
 export interface JourneyState {
@@ -14,7 +25,7 @@ export interface JourneyState {
 }
 
 export type JourneyAction =
-  | { type: "APPEND_HOP"; code: string; price: number; distanceKm?: number }
+  | { type: "APPEND_HOP"; code: string; price: number; distanceKm?: number; leg?: FlightLeg }
   | { type: "FLY_HOME"; price: number; distanceKm?: number }
   | { type: "ONE_WAY" }
   | { type: "RESET" }
@@ -43,7 +54,7 @@ export function journeyReducer(
         ...state,
         journey: [
           ...state.journey,
-          { code: action.code, nights: 1, price: action.price, distanceKm: action.distanceKm },
+          { code: action.code, nights: 1, price: action.price, distanceKm: action.distanceKm, leg: action.leg },
         ],
       };
     }
