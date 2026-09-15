@@ -158,11 +158,14 @@ export function RouteBuilderContent() {
 
   // --- Handlers ---
 
-  function handleHomeChange(code: string, _city: string) {
-    void _city;
-    setHomeCode(code);
-    if (code.length === 3) {
+  function handleHomeChange(code: string, city: string) {
+    if (city) {
+      // User selected a valid airport from the dropdown
+      setHomeCode(code);
       dispatch({ type: "SET_HOME", code });
+    } else {
+      // User is still typing — disable all queries until a selection is made
+      setHomeCode("");
     }
   }
 
