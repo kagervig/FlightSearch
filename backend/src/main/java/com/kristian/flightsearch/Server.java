@@ -38,11 +38,13 @@ public class Server {
     private static AirportStore airportStore; // Provides airport lookup by code
     private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFKLAX")
 
-    // RateLimiter(maxRequests, windowMillis): multicity search is expensive, so 1 req/2 s per IP;
-    // airport search is lightweight but called on every keystroke, so 1 req/1 s; all other
-    // endpoints share a generous 3 req/60 s.
+    // RateLimiter(maxRequests, windowMillis): multicity search is expensive (full graph traversal),
+    // so 1 req/2 s per IP; airport search is lightweight but called on every keystroke, so 1 req/1 s;
+    // route-builder endpoints are cheap DB queries fired interactively on each hop, so 10 req/10 s;
+    // everything else shares a conservative 3 req/60 s.
     private static final RateLimiter MULTICITY_LIMITER = new RateLimiter(1, 2_000);
     private static final RateLimiter AIRPORT_SEARCH_LIMITER = new RateLimiter(1, 1_000);
+    private static final RateLimiter ROUTE_LIMITER = new RateLimiter(10, 10_000);
     private static final RateLimiter DEFAULT_LIMITER = new RateLimiter(3, 60_000);
 
     public static void main(String[] args) {
@@ -82,6 +84,8 @@ public class Server {
                 limiter = MULTICITY_LIMITER;
             } else if (ctx.path().equals("/api/airports/search")) {
                 limiter = AIRPORT_SEARCH_LIMITER;
+            } else if (ctx.path().startsWith("/api/routes/")) {
+                limiter = ROUTE_LIMITER;
             } else {
                 limiter = DEFAULT_LIMITER;
             }
