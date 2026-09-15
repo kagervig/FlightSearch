@@ -14,6 +14,7 @@
 
 import { useReducer, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { motion } from "framer-motion";
 import { Plane, AlertCircle, ArrowRight, RotateCcw } from "lucide-react";
 import { journeyReducer, initialState, deriveJourney } from "@/lib/journeyReducer";
 import type { FlightLeg } from "@/lib/journeyReducer";
@@ -484,13 +485,16 @@ export function RouteBuilderContent() {
                     <p className="text-sm text-muted">No onward flights found from {currentCode}.</p>
                   </div>
                 ) : (
-                  (onwardQuery.data ?? []).map((flight) => (
-                    <button
+                  (onwardQuery.data ?? []).map((flight, idx) => (
+                    <motion.button
                       key={flight.flightNumber}
                       type="button"
                       onClick={() => handlePickFlight(flight)}
                       className="w-full flex items-center gap-2 px-4 py-3 border-t text-left hover:bg-card/60 transition-colors group"
                       style={{ borderColor: "var(--border)" }}
+                      initial={{ opacity: 0, x: -6 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.18, delay: idx * 0.03 }}
                     >
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-foreground tracking-wide">
@@ -509,7 +513,7 @@ export function RouteBuilderContent() {
                         {fmtPrice(flight.price)}
                       </span>
                       <ArrowRight className="w-4 h-4 text-primary opacity-25 group-hover:opacity-100 transition-opacity shrink-0" />
-                    </button>
+                    </motion.button>
                   ))
                 )}
               </div>
@@ -554,7 +558,11 @@ export function RouteBuilderContent() {
 
         {/* ── Right panel: map ── */}
         <div className="hidden md:flex flex-1 flex-col relative p-4">
-          <RouteMap journey={journeyCodes} airports={mapCoords} />
+          <RouteMap
+            journey={journeyCodes}
+            airports={mapCoords}
+            spiderDestinations={!closed ? (onwardQuery.data?.map((f) => f.destination) ?? []) : []}
+          />
 
           {/* 10-city cap modal — overlays the map only */}
           {atCap && !closed && (

@@ -54,7 +54,7 @@ export function journeyReducer(
         ...state,
         journey: [
           ...state.journey,
-          { code: action.code, nights: 1, price: action.price, distanceKm: action.distanceKm, leg: action.leg },
+          { code: action.code, nights: 3, price: action.price, distanceKm: action.distanceKm, leg: action.leg },
         ],
       };
     }

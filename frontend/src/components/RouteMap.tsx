@@ -27,10 +27,16 @@ interface RouteMapProps {
   showHeading?: boolean;
   /** Disable zoom/pan and hide the reset button — for use as a static thumbnail (default: true) */
   interactive?: boolean;
+  /**
+   * Airport codes to draw as faint spider arcs from the last journey point.
+   * Used by the route builder to preview available next hops.
+   */
+  spiderDestinations?: string[];
 }
 
 // Map drawing constants — centralised so zoom handler and draw path stay in sync
 const FLIGHT_PATH_STROKE_WIDTH = 2.5;
+const SPIDER_STROKE_WIDTH = 1;
 const COUNTRY_BORDER_STROKE_WIDTH = 0.4;
 const MARKER_RADIUS = 4.5;
 const MARKER_STROKE_WIDTH = 1.5;
@@ -55,7 +61,14 @@ async function getWorldData(): Promise<unknown> {
   return worldDataCache;
 }
 
-export function RouteMap({ journey, airports, mapHeight, showHeading = false, interactive = true }: RouteMapProps) {
+export function RouteMap({
+  journey,
+  airports,
+  mapHeight,
+  showHeading = false,
+  interactive = true,
+  spiderDestinations,
+}: RouteMapProps) {
   const uid = useId().replace(/:/g, "");
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -91,7 +104,16 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false, in
   }, [interactive]);
 
   useEffect(() => {
-    if (!svgRef.current || containerWidth === 0 || journey.length < 2) return;
+    if (!svgRef.current || containerWidth === 0) return;
+
+    // Journey was reset to a single point — clear the canvas and bail out
+    if (journey.length < 2) {
+      const d3 = d3Ref.current;
+      if (d3) d3.select(svgRef.current).selectAll("*").remove();
+      hasAnimated.current = null;
+      initialTransformRef.current = null;
+      return;
+    }
 
     let cancelled = false;
 
@@ -183,6 +205,32 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false, in
         .attr("stroke", countryStroke)
         .attr("stroke-width", COUNTRY_BORDER_STROKE_WIDTH);
 
+      // Spider arcs — faint red lines from the current airport to each available next hop.
+      // Drawn under the journey arcs so they don't obscure confirmed legs.
+      const currentAirport = airportLookup.get(journey[journey.length - 1]);
+      if (spiderDestinations && spiderDestinations.length > 0 && currentAirport) {
+        for (const destCode of spiderDestinations) {
+          const dest = airportLookup.get(destCode);
+          if (!dest) continue;
+          const lineFeature = {
+            type: "LineString" as const,
+            coordinates: [
+              [currentAirport.lng, currentAirport.lat],
+              [dest.lng, dest.lat],
+            ],
+          };
+          g.append("path")
+            .attr("class", "spider-path")
+            .datum(lineFeature)
+            .attr("d", pathGen)
+            .attr("fill", "none")
+            .attr("stroke", "#ef4444")
+            .attr("stroke-width", SPIDER_STROKE_WIDTH)
+            .attr("stroke-opacity", 0.25)
+            .attr("stroke-linecap", "round");
+        }
+      }
+
       // Great-circle arc per leg — classed so the zoom handler can select them
       for (let i = 0; i < journey.length - 1; i++) {
         const from = airportLookup.get(journey[i]);
@@ -210,7 +258,8 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false, in
         const totalLength = (pathEl.node() as SVGPathElement).getTotalLength();
         pathEl
           .attr("stroke-dasharray", totalLength)
-          .attr("stroke-dashoffset", shouldAnimate ? totalLength : 0);
+          // Only hide legs that are about to animate in; already-drawn legs start visible
+          .attr("stroke-dashoffset", shouldAnimate && i >= firstNewLeg ? totalLength : 0);
 
         if (shouldAnimate && i >= firstNewLeg) {
           pathEl
@@ -385,6 +434,9 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false, in
             g.selectAll<SVGPathElement, unknown>(".flight-path")
               .attr("stroke-width", FLIGHT_PATH_STROKE_WIDTH / k);
 
+            g.selectAll<SVGPathElement, unknown>(".spider-path")
+              .attr("stroke-width", SPIDER_STROKE_WIDTH / k);
+
             g.selectAll<SVGCircleElement, MarkerDatum>(".airport-marker")
               .attr("r", MARKER_RADIUS / k)
               .attr("stroke-width", MARKER_STROKE_WIDTH / k);
@@ -395,8 +447,17 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false, in
               );
           });
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        svg.call(zoom).call(zoom.transform as any, initialTransform);
+        svg.call(zoom);
+
+        // Animate pan/zoom when reframing an existing journey; jump on first draw
+        if (initialTransformRef.current) {
+          svg.transition().duration(600).ease(d3.easeCubicInOut)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .call(zoom.transform as any, initialTransform);
+        } else {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          svg.call(zoom.transform as any, initialTransform);
+        }
 
         zoomRef.current = zoom;
         initialTransformRef.current = initialTransform;
@@ -415,7 +476,7 @@ export function RouteMap({ journey, airports, mapHeight, showHeading = false, in
     return () => {
       cancelled = true;
     };
-  }, [journey, airports, containerWidth, uid, mapHeight]);
+  }, [journey, airports, spiderDestinations, containerWidth, uid, mapHeight, interactive]);
 
   const handleReset = useCallback(() => {
     if (!svgRef.current || !zoomRef.current || !initialTransformRef.current || !d3Ref.current) return;

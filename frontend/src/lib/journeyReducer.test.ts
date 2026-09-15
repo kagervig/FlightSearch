@@ -41,7 +41,7 @@ describe("APPEND_HOP", () => {
       price: 120,
     });
     expect(s.journey).toHaveLength(2);
-    expect(s.journey[1]).toEqual({ code: "CDG", nights: 1, price: 120 });
+    expect(s.journey[1]).toEqual({ code: "CDG", nights: 3, price: 120 });
   });
 
   it("does nothing when the journey is closed", () => {
@@ -87,13 +87,13 @@ describe("APPEND_HOP", () => {
     expect(s.journey[1].leg).toEqual(leg);
   });
 
-  it("defaults new hops to 1 night", () => {
+  it("defaults new hops to 3 nights", () => {
     const s = journeyReducer(makeState(), {
       type: "APPEND_HOP",
       code: "CDG",
       price: 120,
     });
-    expect(s.journey[1].nights).toBe(1);
+    expect(s.journey[1].nights).toBe(3);
   });
 });
 
