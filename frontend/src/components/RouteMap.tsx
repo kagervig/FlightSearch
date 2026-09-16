@@ -36,7 +36,7 @@ interface RouteMapProps {
 
 // Map drawing constants — centralised so zoom handler and draw path stay in sync
 const FLIGHT_PATH_STROKE_WIDTH = 2.5;
-const SPIDER_STROKE_WIDTH = 1;
+const SPIDER_STROKE_WIDTH = FLIGHT_PATH_STROKE_WIDTH;
 const COUNTRY_BORDER_STROKE_WIDTH = 0.4;
 const MARKER_RADIUS = 4.5;
 const MARKER_STROKE_WIDTH = 1.5;
@@ -106,15 +106,6 @@ export function RouteMap({
   useEffect(() => {
     if (!svgRef.current || containerWidth === 0) return;
 
-    // Journey was reset to a single point — clear the canvas and bail out
-    if (journey.length < 2) {
-      const d3 = d3Ref.current;
-      if (d3) d3.select(svgRef.current).selectAll("*").remove();
-      hasAnimated.current = null;
-      initialTransformRef.current = null;
-      return;
-    }
-
     let cancelled = false;
 
     async function draw() {
@@ -131,14 +122,39 @@ export function RouteMap({
       const journeyKey = journey.join(",");
       const prevKey = hasAnimated.current ?? "";
       const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      const changed = journeyKey !== prevKey;
+
+      // When journey shrinks to a single airport (RESET), clear animation state so
+      // the map resets without playing extension animations.
+      if (prevKey.includes(",") && !journeyKey.includes(",")) {
+        hasAnimated.current = null;
+        initialTransformRef.current = null;
+      }
+
+      const effectivePrevKey = hasAnimated.current ?? "";
+      const changed = journeyKey !== effectivePrevKey;
       // Only animate new legs: if the new key is a strict extension of the previous one,
       // skip legs that already animated.
-      const isExtension = changed && prevKey !== "" && journeyKey.startsWith(prevKey + ",");
-      const firstNewLeg = isExtension ? Math.max(0, prevKey.split(",").length - 1) : 0;
+      const isExtension = changed && effectivePrevKey !== "" && journeyKey.startsWith(effectivePrevKey + ",");
+      const firstNewLeg = isExtension ? Math.max(0, effectivePrevKey.split(",").length - 1) : 0;
       const shouldAnimate = changed && !prefersReducedMotion;
       // Mark before any async work so a concurrent re-run skips the animation
       if (changed) hasAnimated.current = journeyKey;
+
+      // Fade out existing spider arcs before redrawing when the journey is growing
+      if (isExtension && svgRef.current) {
+        const hasSpiders = d3.select(svgRef.current).selectAll(".spider-path").size() > 0;
+        if (hasSpiders) {
+          await new Promise<void>(resolve => {
+            d3.select(svgRef.current!)
+              .selectAll<SVGPathElement, unknown>(".spider-path")
+              .transition()
+              .duration(200)
+              .attr("stroke-opacity", 0);
+            setTimeout(resolve, 220);
+          });
+          if (cancelled) return;
+        }
+      }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const world = worldData as any;
@@ -205,9 +221,16 @@ export function RouteMap({
         .attr("stroke", countryStroke)
         .attr("stroke-width", COUNTRY_BORDER_STROKE_WIDTH);
 
-      // Spider arcs — faint red lines from the current airport to each available next hop.
+      // Spider arcs — red preview lines from the current airport to each available next hop.
       // Drawn under the journey arcs so they don't obscure confirmed legs.
       const currentAirport = airportLookup.get(journey[journey.length - 1]);
+
+      // Delay spider appearance until after any new arc animation finishes
+      const numNewLegs = journey.length >= 2 && shouldAnimate
+        ? journey.length - 1 - firstNewLeg
+        : 0;
+      const spiderDelay = numNewLegs > 0 ? (numNewLegs - 1) * 240 + 900 : 0;
+
       if (spiderDestinations && spiderDestinations.length > 0 && currentAirport) {
         for (const destCode of spiderDestinations) {
           const dest = airportLookup.get(destCode);
@@ -226,48 +249,54 @@ export function RouteMap({
             .attr("fill", "none")
             .attr("stroke", "#ef4444")
             .attr("stroke-width", SPIDER_STROKE_WIDTH)
-            .attr("stroke-opacity", 0.25)
-            .attr("stroke-linecap", "round");
+            .attr("stroke-opacity", 0)
+            .attr("stroke-linecap", "round")
+            .transition()
+            .delay(spiderDelay)
+            .duration(300)
+            .attr("stroke-opacity", 0.4);
         }
       }
 
       // Great-circle arc per leg — classed so the zoom handler can select them
-      for (let i = 0; i < journey.length - 1; i++) {
-        const from = airportLookup.get(journey[i]);
-        const to = airportLookup.get(journey[i + 1]);
-        if (!from || !to) continue;
+      if (journey.length >= 2) {
+        for (let i = 0; i < journey.length - 1; i++) {
+          const from = airportLookup.get(journey[i]);
+          const to = airportLookup.get(journey[i + 1]);
+          if (!from || !to) continue;
 
-        const lineFeature = {
-          type: "LineString" as const,
-          coordinates: [
-            [from.lng, from.lat],
-            [to.lng, to.lat],
-          ],
-        };
+          const lineFeature = {
+            type: "LineString" as const,
+            coordinates: [
+              [from.lng, from.lat],
+              [to.lng, to.lat],
+            ],
+          };
 
-        const pathEl = g
-          .append("path")
-          .attr("class", "flight-path")
-          .datum(lineFeature)
-          .attr("d", pathGen)
-          .attr("fill", "none")
-          .attr("stroke", `url(#${gradientId})`)
-          .attr("stroke-width", FLIGHT_PATH_STROKE_WIDTH)
-          .attr("stroke-linecap", "round");
+          const pathEl = g
+            .append("path")
+            .attr("class", "flight-path")
+            .datum(lineFeature)
+            .attr("d", pathGen)
+            .attr("fill", "none")
+            .attr("stroke", `url(#${gradientId})`)
+            .attr("stroke-width", FLIGHT_PATH_STROKE_WIDTH)
+            .attr("stroke-linecap", "round");
 
-        const totalLength = (pathEl.node() as SVGPathElement).getTotalLength();
-        pathEl
-          .attr("stroke-dasharray", totalLength)
-          // Only hide legs that are about to animate in; already-drawn legs start visible
-          .attr("stroke-dashoffset", shouldAnimate && i >= firstNewLeg ? totalLength : 0);
-
-        if (shouldAnimate && i >= firstNewLeg) {
+          const totalLength = (pathEl.node() as SVGPathElement).getTotalLength();
           pathEl
-            .transition()
-            .duration(900)
-            .delay((i - firstNewLeg) * 240)
-            .ease(d3.easeCubicOut)
-            .attr("stroke-dashoffset", 0);
+            .attr("stroke-dasharray", totalLength)
+            // Only hide legs that are about to animate in; already-drawn legs start visible
+            .attr("stroke-dashoffset", shouldAnimate && i >= firstNewLeg ? totalLength : 0);
+
+          if (shouldAnimate && i >= firstNewLeg) {
+            pathEl
+              .transition()
+              .duration(900)
+              .delay((i - firstNewLeg) * 240)
+              .ease(d3.easeCubicOut)
+              .attr("stroke-dashoffset", 0);
+          }
         }
       }
 
@@ -419,6 +448,13 @@ export function RouteMap({
         initialTransform = d3.zoomIdentity
           .translate(width / 2 - scale * cx, height / 2 - scale * cy)
           .scale(scale);
+      } else if (projectedCoords.length === 1) {
+        // Single airport (home selected, no hops yet): pan to it with a moderate zoom
+        const [px, py] = projectedCoords[0];
+        const scale = 2.5;
+        initialTransform = d3.zoomIdentity
+          .translate(width / 2 - scale * px, height / 2 - scale * py)
+          .scale(scale);
       }
 
       if (interactive) {
@@ -466,6 +502,7 @@ export function RouteMap({
         g.attr("transform", initialTransform.toString());
         g.selectAll<SVGPathElement, unknown>(".country-border").attr("stroke-width", COUNTRY_BORDER_STROKE_WIDTH / k);
         g.selectAll<SVGPathElement, unknown>(".flight-path").attr("stroke-width", FLIGHT_PATH_STROKE_WIDTH / k);
+        g.selectAll<SVGPathElement, unknown>(".spider-path").attr("stroke-width", SPIDER_STROKE_WIDTH / k);
         g.selectAll<SVGCircleElement, unknown>(".airport-marker")
           .attr("r", MARKER_RADIUS / k)
           .attr("stroke-width", MARKER_STROKE_WIDTH / k);
