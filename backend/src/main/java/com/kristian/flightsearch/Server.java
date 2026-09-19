@@ -37,7 +37,6 @@ public class Server {
     private static FlightGraph flightNetwork; // Graph structure: airports connected by flights
     private static AirportStore airportStore; // Provides airport lookup by code
     private static FlightStore flightStore;   // Handles database queries for flights
-    private static HashMap<String, ArrayList<Flight>> flightIndex; // Flights indexed by route (e.g., "JFKLAX")
 
     // RateLimiter(maxRequests, windowMillis): multicity search is expensive, so 1 req/2 s per IP;
     // airport search is lightweight but called on every keystroke, so 1 req/1 s; all other
@@ -70,6 +69,17 @@ public class Server {
         // handler.
         // Render sits behind a load balancer, so the real client IP is in
         // X-Forwarded-For.
+        app.before(ctx -> ctx.attribute("requestStart", System.currentTimeMillis()));
+
+        app.after(ctx -> {
+            Long start = ctx.attribute("requestStart");
+            if (start != null) {
+                long ms = System.currentTimeMillis() - start;
+                System.out.printf("[timing] %s %s %dms %d%n",
+                        ctx.method(), ctx.path(), ms, ctx.statusCode());
+            }
+        });
+
         app.before(ctx -> {
             String ip = ctx.header("X-Forwarded-For");
             if (ip != null && !ip.isBlank()) {
@@ -163,14 +173,10 @@ public class Server {
 
         flightStore = new FlightStore(DatabaseManager.getDataSource(), airportStore);
 
-        List<String[]> connections = flightStore.getConnectionMap();
-        List<LegQuery> allLegs = new ArrayList<>();
-        for (String[] conn : connections) {
-            allLegs.add(new LegQuery(conn[0], conn[1]));
-        }
-        flightIndex = flightStore.readFlightsForLegs(allLegs);
+        HashMap<String, ArrayList<Flight>> startupFlights = flightStore.readAllFlights();
+        System.out.println("[startup] readAllFlights: " + startupFlights.size() + " route keys");
 
-        FlightGraph.addFlightEdges(flightNetwork, flightIndex);
+        FlightGraph.addFlightEdges(flightNetwork, startupFlights);
 
         // System.out.println("Loaded " + airports.length + " airports and " + flightList.size() + " flights");
     }
@@ -349,10 +355,7 @@ public class Server {
             return;
         }
 
-        // Look up flights using our index (O(1) lookup)
-        // The key format is "ORIGIN-DESTINATION" (e.g., "JFK-LAX")
-        String routeKey = from + "-" + to;
-        ArrayList<Flight> flights = flightIndex.get(routeKey);
+        ArrayList<Flight> flights = flightStore.getFlightsForRoute(from, to);
 
         // Handle case where no direct flights exist
         if (flights == null || flights.isEmpty()) {
@@ -566,8 +569,8 @@ public class Server {
 
         // System.out.println("[multicity] from=" + from + " destinations=" + Arrays.toString(destinations) + " optimizeBy=" + optimizeBy);
 
-        MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, flightIndex);
-        ArrayList<Route> validRoutes = multiCitySearch.search(from, destinations, optimizeBy);
+        MultiCitySearch multiCitySearch = new MultiCitySearch(airportStore, flightNetwork, flightStore);
+        ArrayList<Route> validRoutes = multiCitySearch.searchByDate(from, destinations, optimizeBy, flightStore);
         // System.out.println("[multicity] direct search: " + validRoutes.size() + " routes");
 
         // When no direct-flight routes exist, fall back to connection search via Dijkstra

@@ -91,7 +91,7 @@ public class FlightStore {
     /**
      * takes as input the results from the sql query, row by row
      * fetches airport objects of the origin and destination airports
-     * calculates flight distance using the haversine formula in calcDistance method 
+     * calculates flight distance using the haversine formula in calcDistance method
      * calculates flight duration based on distance using calculateFlightDuration
      * builds a hashmap of all data to be displayed in that row
      * returns the hashmap
@@ -127,11 +127,8 @@ public class FlightStore {
     }
 
     /*
-     * Reads all flights from the database. Airport objects are resolved from AirportStore
-     * so each airport is represented by a single shared instance. Joins airlines and
-     * planes so airlineName and aircraftName are available for display without a
-     * second query.
-     * Returns a HashMap keyed by flight_number.
+     * Returns all distinct (origin, destination) pairs for direct flights.
+     * Used at startup to build the connectivity graph without loading flight objects.
      */
     public List<String[]> getConnectionMap() {
         List<String[]> connections = new ArrayList<>();
@@ -153,9 +150,49 @@ public class FlightStore {
     }
 
     /*
-     * Fetches full Flight objects for a list of (origin, destination) legs.
-     * Returns a map keyed by "ORIGINDEST" (e.g. "YYZJFK")
-     * whose values are lists of Flight objects with price and metadata populated.
+     * Fetches all flights from the database.
+     * Returns a map keyed by "ORIGINDEST" (e.g. "YYZJFK") for use at startup.
+     */
+    public HashMap<String, ArrayList<Flight>> readAllFlights() {
+        HashMap<String, ArrayList<Flight>> result = new HashMap<>();
+        String sql = "SELECT f.flight_number, f.departure_time, f.ticket_price, " +
+                "f.origin, f.destination, a.airline_name, p.name AS aircraft_name " +
+                "FROM flights f " +
+                "LEFT JOIN airlines a ON f.airline_code = a.airline_code " +
+                "LEFT JOIN planes p ON f.aircraft_type = p.iata_code";
+
+        try (Connection conn = dataSource.getConnection();
+                Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery(sql)) {
+
+            while (rs.next()) {
+                Airport origin = airportStore.getAirportByCode(rs.getString("origin"));
+                Airport destination = airportStore.getAirportByCode(rs.getString("destination"));
+                if (origin == null || destination == null) continue;
+
+                double distance = FlightDistanceCalculator.calcDistance(origin, destination);
+                LocalTime departureTime = rs.getTime("departure_time").toLocalTime();
+                int price = rs.getBigDecimal("ticket_price").intValue();
+
+                Flight flight = new Flight(origin, destination, distance, departureTime, rs.getString("flight_number"));
+                flight.setPrice(price);
+                flight.setAirlineName(rs.getString("airline_name"));
+                flight.setAircraftName(rs.getString("aircraft_name"));
+
+                String key = rs.getString("origin") + rs.getString("destination");
+                result.computeIfAbsent(key, k -> new ArrayList<>()).add(flight);
+            }
+
+        } catch (Exception e) {
+            System.out.println("Error reading all flights from database: " + e.getMessage());
+        }
+
+        return result;
+    }
+
+    /*
+     * Fetches full Flight objects for a specific list of (origin, destination) legs.
+     * Returns a map keyed by "ORIGINDEST" (e.g. "YYZJFK") for per-request use.
      */
     public HashMap<String, ArrayList<Flight>> readFlightsForLegs(List<LegQuery> legs) {
         HashMap<String, ArrayList<Flight>> result = new HashMap<>();
